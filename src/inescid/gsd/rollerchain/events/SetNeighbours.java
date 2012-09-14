@@ -5,7 +5,7 @@ import inescid.gsd.rollerchain.interfaces.EventReceiver;
 
 import java.util.Set;
 
-public class SetNeighbours implements Event {
+public class SetNeighbours extends Event {
 	private Set<EventReceiver> group;
 	private Set<EventReceiver> predGroup;
 	private Set<EventReceiver> succGroup;

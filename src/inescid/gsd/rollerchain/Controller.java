@@ -12,14 +12,37 @@ import inescid.gsd.utils.Utils;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.PriorityBlockingQueue;
 
-public class Controller implements EventReceiver {
+public class Controller implements EventReceiver, Runnable {
 	private Output out;
-
 	private ControllerInternalState s;
+
+	PriorityBlockingQueue<Event> queue = new PriorityBlockingQueue<Event>();
+
+	Controller() {
+		new Thread(this).start();
+	}
 
 	@Override
 	public void processEvent(Event e) {
+		this.queue.put(e); // TODO: take advantage of priorities
+		this.out.write(this, "queued " + e + ". queue has: " + this.queue.size());
+	}
+
+	@Override
+	public void run() {
+		while (true) {
+			try {
+				this.processEventInternal(this.queue.take());
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				System.exit(-1);
+			}
+		}
+	}
+
+	public void processEventInternal(Event e) {
 		if (e instanceof WorkerInit) {
 			this.processWorkerInit((WorkerInit) e);
 		}
@@ -31,7 +54,7 @@ public class Controller implements EventReceiver {
 		}
 
 		if (Group.groups.size() == 0) {
-			Group seedGroup = Group.createSeedGroup(e.getWorker());
+			Group.createSeedGroup(e.getWorker());
 		} else {
 			Group toJoin = this.getGroupToJoin();
 			toJoin.joinNode(e.getWorker());

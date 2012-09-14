@@ -5,7 +5,7 @@ import inescid.gsd.rollerchain.interfaces.EventReceiver;
 
 import java.util.TreeSet;
 
-public class Merge implements Event {
+public class Merge extends Event {
 	private final TreeSet<EventReceiver> smallGroup;
 	private final TreeSet<EventReceiver> successorGroup;
 

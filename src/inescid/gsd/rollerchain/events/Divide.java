@@ -5,7 +5,7 @@ import inescid.gsd.rollerchain.interfaces.EventReceiver;
 
 import java.util.TreeSet;
 
-public class Divide implements Event {
+public class Divide extends Event {
 	private final TreeSet<EventReceiver> newGroup;
 	private final TreeSet<EventReceiver> oldGroup;
 

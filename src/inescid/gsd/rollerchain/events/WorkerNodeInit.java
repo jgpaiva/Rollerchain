@@ -3,7 +3,7 @@ package inescid.gsd.rollerchain.events;
 import inescid.gsd.rollerchain.interfaces.Event;
 import inescid.gsd.rollerchain.interfaces.EventReceiver;
 
-public class WorkerNodeInit implements Event {
+public class WorkerNodeInit extends Event {
 	private EventReceiver controller;
 
 	public WorkerNodeInit(EventReceiver controller) {
