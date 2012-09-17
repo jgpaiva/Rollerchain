@@ -17,6 +17,8 @@ package objectecho;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.ChannelPipeline;
@@ -30,16 +32,18 @@ import org.jboss.netty.handler.codec.serialization.ObjectEncoder;
 /**
  * Modification of {@link EchoClient} which utilizes Java object serialization.
  */
-public class ObjectEchoClient {
+public class ObjectEchoClient implements Runnable {
+	private static final Logger logger = Logger.getLogger(
+			ObjectEchoClient.class.getName());
 
 	private final String host;
 	private final int port;
-	private final int firstMessageSize;
+	private final int id;
 
-	public ObjectEchoClient(String host, int port, int firstMessageSize) {
+	public ObjectEchoClient(String host, int port, int id) {
 		this.host = host;
 		this.port = port;
-		this.firstMessageSize = firstMessageSize;
+		this.id = id;
 	}
 
 	public void run() {
@@ -56,7 +60,7 @@ public class ObjectEchoClient {
 						new ObjectEncoder(),
 						new ObjectDecoder(
 								ClassResolvers.cacheDisabled(this.getClass().getClassLoader())),
-						new ObjectEchoClientHandler(ObjectEchoClient.this.firstMessageSize));
+						new ObjectEchoClientHandler(ObjectEchoClient.this.id));
 			}
 		});
 
@@ -68,10 +72,18 @@ public class ObjectEchoClient {
 		// Parse options.
 		final String host = "localhost";
 		final int port = 8080;
-		final int firstMessageSize;
 
-		firstMessageSize = 256;
+		ObjectEchoClient a = new ObjectEchoClient(host, port, 0);
+		Thread ta = new Thread(a);
+		ta.run();
 
-		new ObjectEchoClient(host, port, firstMessageSize).run();
+		ObjectEchoClient b = new ObjectEchoClient(host, port, 1);
+		Thread tb = new Thread(b);
+		tb.run();
+
+		ta.join();
+		ObjectEchoClient.logger.log(Level.INFO, "TA done");
+		tb.join();
+		ObjectEchoClient.logger.log(Level.INFO, "TB done");
 	}
 }
