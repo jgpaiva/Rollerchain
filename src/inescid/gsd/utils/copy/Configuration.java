@@ -1,4 +1,4 @@
-package objectecho;
+package inescid.gsd.utils.copy;
 
 public class Configuration {
 
