@@ -1,5 +1,8 @@
 package inescid.gsd.transport;
 
+import inescid.gsd.transport.events.DeathNotification;
+import inescid.gsd.transport.events.EndpointInfo;
+
 import java.net.InetSocketAddress;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -22,7 +25,7 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 
 	public IncomingChannelHandler(ConnectionManager connectionManager) {
 		this.connectionManager = connectionManager;
-		this.channel = null;
+		channel = null;
 		IncomingChannelHandler.logger.log(Level.INFO, "init");
 	}
 
@@ -30,9 +33,8 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 	public void channelConnected(
 			ChannelHandlerContext ctx, ChannelStateEvent e) {
 		InetSocketAddress addr = (InetSocketAddress) e.getChannel().getRemoteAddress();
-		IncomingChannelHandler.logger.log(Level.INFO, this.connectionManager.getSelfEndpoint()
-				+ " has incoming connection from: " + new Endpoint(addr));
-		this.channel = e.getChannel();
+		channel = e.getChannel();
+		connectionManager.addChannel(otherEndpoint, channel);
 	}
 
 	@Override
@@ -42,16 +44,16 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 				Level.WARNING,
 				"Unexpected exception from downstream.",
 				e.getCause());
-		e.getChannel().close();
-		// TODO: handle cleanup
+		connectionManager.deliverEvent(otherEndpoint, new DeathNotification(e.getCause()));
+		connectionManager.removeConnection(connection);
 	}
 
 	public Endpoint getEndpoint() {
-		return this.otherEndpoint;
+		return otherEndpoint;
 	}
 
 	public Channel getChannel() {
-		return this.channel;
+		return channel;
 	}
 
 	@Override
@@ -59,18 +61,17 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 			ChannelHandlerContext ctx, MessageEvent e) throws Exception {
 		if (e.getMessage() instanceof EndpointInfo) {
 			EndpointInfo message = (EndpointInfo) e.getMessage();
-			this.otherEndpoint = message.endpoint;
-			this.connection = this.connectionManager.createConnection(this);
+			otherEndpoint = message.endpoint;
+			connection = connectionManager.createConnection(this);
 		} else {
-			if (this.connection == null) {
+			if (connection == null)
 				IncomingChannelHandler.logger.log(Level.SEVERE, "received: " + e.getMessage()
 						+ " and connection was null");
-			}
-			this.connection.incomingMessage(this.channel, e);
+			connection.incomingMessage(channel, e, otherEndpoint);
 		}
 	}
 
 	public void close() {
-		this.channel.close();
+		channel.close();
 	}
 }

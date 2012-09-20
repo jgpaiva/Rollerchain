@@ -1,7 +1,11 @@
 package inescid.gsd.transport;
 
+import inescid.gsd.transport.events.DeathNotification;
+import inescid.gsd.transport.events.EndpointInfo;
+
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,7 +30,7 @@ import org.jboss.netty.handler.codec.serialization.ObjectEncoder;
 public class Connection extends SimpleChannelUpstreamHandler {
 	boolean dirty;
 
-	private final Endpoint otherEndpoint;
+	public final Endpoint otherEndpoint;
 
 	private final ConnectionManager connectionManager;
 	private Channel channel;
@@ -43,26 +47,25 @@ public class Connection extends SimpleChannelUpstreamHandler {
 
 	public Connection(ConnectionManager connectionManager, Endpoint endpoint) {
 		this.connectionManager = connectionManager;
-		this.otherEndpoint = endpoint;
-		this.channel = null;
+		otherEndpoint = endpoint;
+		channel = null;
 	}
 
 	public Connection(ConnectionManager connectionManager, Endpoint endpoint,
 			IncomingChannelHandler incomingChannel) {
 		this.connectionManager = connectionManager;
-		this.otherEndpoint = endpoint;
-		this.channel = incomingChannel.getChannel();
+		otherEndpoint = endpoint;
+		channel = incomingChannel.getChannel();
 		this.incomingChannel = incomingChannel;
 	}
 
-	public void init() {
+	public void init(ExecutorService bossThreadPool, ExecutorService workerThreadPool) {
 		// Configure the client.
-		this.bootstrap = new ClientBootstrap(
-				new NioClientSocketChannelFactory(this.connectionManager.getBossThreadPool(),
-						this.connectionManager.getWorkerThreadPool()));
+		bootstrap = new ClientBootstrap(
+				new NioClientSocketChannelFactory(bossThreadPool, workerThreadPool));
 
 		// Set up the pipeline factory.
-		this.bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
+		bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
 			@Override
 			public ChannelPipeline getPipeline() throws Exception {
 				return Channels.pipeline(
@@ -73,12 +76,12 @@ public class Connection extends SimpleChannelUpstreamHandler {
 			}
 		});
 
-		this.bootstrap.setOption("tcpnodelay", true);
-		this.bootstrap.setOption("keepAlive", true);
+		bootstrap.setOption("tcpnodelay", true);
+		bootstrap.setOption("keepAlive", true);
 
 		// Start the connection attempt.
-		Connection.logger.log(Level.INFO, "Connecting to: " + this.otherEndpoint);
-		ChannelFuture future = this.bootstrap.connect(this.otherEndpoint.getInetAddress());
+		Connection.logger.log(Level.INFO, "Connecting to: " + otherEndpoint);
+		ChannelFuture future = bootstrap.connect(otherEndpoint.getInetAddress());
 
 		// Wait until the connection attempt succeeds or fails.
 		future.addListener(new ChannelFutureListener() {
@@ -90,30 +93,26 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	}
 
 	void channelConnectedCallback(ChannelFuture future) {
-		assert (this.channel == null);
-		if (future.isSuccess()) {
-			Connection.logger.log(Level.INFO, this.connectionManager.getSelfEndpoint()
-					+ " connected to:" + this.otherEndpoint);
+		assert (channel == null);
+		if (future.getChannel() != null)
+			connectionManager.addChannel(otherEndpoint, future.getChannel());
+		if (future.isSuccess())
 			synchronized (this) {
-				this.channel = future.getChannel();
+				channel = future.getChannel();
 
-				if (this.closed) {
-					this.cleanup();
-				} else {
-					this.sendMessage(new EndpointInfo(this.connectionManager.getSelfEndpoint()));
+				if (closed)
+					cleanup();
+				else {
+					sendMessage(new EndpointInfo(connectionManager.getSelfEndpoint()));
 
-					while (this.outgoing.size() > 0) {
-						this.channel.write(this.outgoing.poll());
-					}
+					while (outgoing.size() > 0)
+						channel.write(outgoing.poll());
 				}
 			}
-		} else {
-			Connection.logger.log(Level.WARNING, this.connectionManager.getSelfEndpoint()
-					+ " could not create a connection to: " + this.otherEndpoint);
-			future.getCause().printStackTrace(); // TODO: update me with
-													// correct
-													// error treatment
-			this.cleanup();
+		else {
+			future.getCause().printStackTrace();
+			connectionManager.deliverEvent(otherEndpoint, new DeathNotification(future.getCause()));
+			connectionManager.removeConnection(this);
 		}
 	}
 
@@ -124,12 +123,12 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	 * @param message
 	 */
 	public void sendMessage(Object message) {
+		clean();
 		synchronized (this) {
-			if (this.channel == null) {
-				this.outgoing.add(message);
-			} else {
-				this.channel.write(message);
-			}
+			if (channel == null)
+				outgoing.add(message);
+			else
+				channel.write(message);
 		}
 	}
 
@@ -139,32 +138,31 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	@Override
 	public void messageReceived(
 			ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-		this.incomingMessage(this.channel, e);
+		incomingMessage(channel, e, otherEndpoint);
 	}
 
-	public void incomingMessage(Channel c, MessageEvent e) {
-		assert (c == this.channel && this.incomingChannel == null || c == this.incomingChannel
-				.getChannel());
-		this.connectionManager.getToDeliver().processEvent(e.getMessage());
+	public void incomingMessage(Channel c, MessageEvent e, Endpoint source) {
+		clean();
+		assert (((c == channel) && (incomingChannel == null)) || (c == incomingChannel
+				.getChannel()));
+		connectionManager.deliverEvent(source, e.getMessage());
 	}
 
 	@Override
 	public void handleUpstream(
 			ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
-		if (e instanceof ChannelStateEvent) {
-			Connection.logger.info(e.toString());
-		}
+		if (e instanceof ChannelStateEvent) Connection.logger.info(e.toString());
 		super.handleUpstream(ctx, e);
 	}
 
 	public void close() {
-		this.cleanup();
+		cleanup();
 	}
 
 	@Override
 	public void channelClosed(
 			ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-		this.connectionManager.removeConnection(this);
+		connectionManager.removeConnection(this);
 	}
 
 	@Override
@@ -174,43 +172,56 @@ public class Connection extends SimpleChannelUpstreamHandler {
 				Level.WARNING,
 				"Unexpected exception from downstream.",
 				e.getCause());
-		this.cleanup();
+		connectionManager.deliverEvent(otherEndpoint, new DeathNotification(e.getCause()));
+		connectionManager.removeConnection(this);
 	}
 
 	private void cleanup() {
 		synchronized (this) {
-			if (this.channel != null) {
-				this.channel.close();
-				this.channel = null;
+			boolean hadChannel = false;
+			if (channel != null) {
+				channel.close();
+				channel = null;
+				hadChannel = true;
+				Connection.logger.log(Level.INFO, "Closed outgoing channel");
 			}
-			if (this.incomingChannel != null) {
-				this.incomingChannel.close();
-				this.incomingChannel = null;
+			boolean hadIncommingChannel = false;
+			if (incomingChannel != null) {
+				incomingChannel.close();
+				incomingChannel = null;
+				hadIncommingChannel = true;
+				Connection.logger.log(Level.INFO, "Closed incoming channel");
 			}
-			this.outgoing.clear();
-			this.bootstrap.releaseExternalResources();
-			this.closed = true;
+			outgoing.clear();
+			if (bootstrap != null) {
+				Connection.logger.log(Level.INFO, "Releasing external resources");
+				bootstrap.releaseExternalResources();
+				Connection.logger.log(Level.INFO, "Released external resources");
+			} else if (!hadIncommingChannel)
+				Connection.logger.log(Level.SEVERE, "had no bootstrap not incoming channel!");
+			closed = true;
 		}
 	}
 
 	public boolean isDirty() {
-		return this.dirty;
+		return dirty;
 	}
 
 	public void setDirty() {
-		this.dirty = true;
+		dirty = true;
 	}
 
 	public void clean() {
-		this.dirty = false;
+		dirty = false;
 	}
 
 	public Endpoint getOtherEndpoint() {
-		return this.otherEndpoint;
+		return otherEndpoint;
 	}
 
 	public void addIncomingChannel(IncomingChannelHandler incomingChannel) {
 		if (this.incomingChannel != null) throw new RuntimeException("OOPS, SHOULD NEVER HAPPEN");
+		clean();
 		synchronized (this) {
 			this.incomingChannel = incomingChannel;
 		}
@@ -218,6 +229,6 @@ public class Connection extends SimpleChannelUpstreamHandler {
 
 	@Override
 	public String toString() {
-		return "C:" + this.otherEndpoint + (this.incomingChannel != null ? "/in" : "/out");
+		return "Conn:" + otherEndpoint + (incomingChannel != null ? "/in" : "/out");
 	}
 }

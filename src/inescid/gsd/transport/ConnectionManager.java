@@ -1,15 +1,15 @@
 package inescid.gsd.transport;
 
-import inescid.gsd.rollerchain.interfaces.EventReceiver;
+import inescid.gsd.common.EventReceiver;
 import inescid.gsd.utils.Configuration;
 
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,46 +19,71 @@ import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.group.ChannelGroup;
+import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.handler.codec.serialization.ClassResolvers;
 import org.jboss.netty.handler.codec.serialization.ObjectDecoder;
 import org.jboss.netty.handler.codec.serialization.ObjectEncoder;
 
 public class ConnectionManager {
+	// active connections and respective endoints. possibly could be replaced by
+	// a channelgroup
 	private final Map<Endpoint, Connection> connections;
+	// lock for manipulating connections
 	private final ReentrantReadWriteLock connectionsLock;
+	// time between checking active connections
 	private final int connectionTimeout;
+
+	// all channels managed by this connection manager
+	private final ChannelGroup allChannels = new DefaultChannelGroup();
+
+	// executors for connections spawned by the server
 	private final ExecutorService bossThreadPool;
 	private final ExecutorService workerThreadPool;
-	private final EventReceiver toDeliver;
-	private final Endpoint selfEndpoint;
+	// bootstrap for tcp server
 	private final ServerBootstrap serverBootstrap;
-	private final Thread gcThread;
+
+	// owner of this ConnectionManager. will handled incoming events
+	private final EventReceiver toDeliver;
+	// endpoint of owner
+	private final Endpoint selfEndpoint;
+
+	private boolean running = false;
+
+	// executor service for cleanup tasks
+	private final ScheduledExecutorService cleanupThread;
 
 	private static final Logger logger = Logger.getLogger(
 			Connection.class.getName());
 
+	/**
+	 * builds a new connection manager. will create at most one outgoing TCP
+	 * connection per remote endpoint.
+	 * 
+	 * @param toDeliver
+	 * @param selfEndpoint
+	 */
 	public ConnectionManager(EventReceiver toDeliver, Endpoint selfEndpoint) {
-		this.connections = new TreeMap<Endpoint, Connection>();
-		this.connectionsLock = new ReentrantReadWriteLock();
-		// TODO: insert myself in connections with dummy connection
+		connections = new TreeMap<Endpoint, Connection>();
+		connectionsLock = new ReentrantReadWriteLock();
 
-		this.connectionTimeout = Configuration.getConnectionTimeout();
+		connectionTimeout = Configuration.getConnectionTimeout();
 
-		this.bossThreadPool = Executors.newCachedThreadPool();
-		this.workerThreadPool = Executors.newCachedThreadPool();
+		bossThreadPool = Executors.newCachedThreadPool();
+		workerThreadPool = Executors.newCachedThreadPool();
 
 		this.toDeliver = toDeliver;
 		this.selfEndpoint = selfEndpoint;
 
 		// Configure the server.
-		this.serverBootstrap = new ServerBootstrap(
+		serverBootstrap = new ServerBootstrap(
 				new NioServerSocketChannelFactory(
 						Executors.newCachedThreadPool(),
 						Executors.newCachedThreadPool()));
 
 		// Set up the pipeline factory.
-		this.serverBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
+		serverBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
 			@Override
 			public ChannelPipeline getPipeline() throws Exception {
 				return Channels.pipeline(
@@ -68,141 +93,201 @@ public class ConnectionManager {
 						new IncomingChannelHandler(ConnectionManager.this));
 			}
 		});
+		serverBootstrap.setOption("child.tcpnodelay", true);
+		serverBootstrap.setOption("child.keepAlive", true);
 
 		// Bind and start to accept incoming connections.
-		Channel retVal = this.serverBootstrap.bind(new InetSocketAddress(selfEndpoint.port));
+		Channel retVal = serverBootstrap.bind(new InetSocketAddress(selfEndpoint.port));
 		ConnectionManager.logger.log(Level.INFO, "starting server at localhost:"
 				+ selfEndpoint.port + " channel:" + retVal);
+		allChannels.add(retVal);
 
-		this.gcThread = new Thread(new Runnable() {
+		cleanupThread = Executors.newScheduledThreadPool(2);
+		cleanupThread.scheduleAtFixedRate(new Runnable() {
 			@Override
 			public void run() {
 				ConnectionManager.this.checkConnections();
 			}
-		});
-		this.gcThread.start();
+		}, 0, connectionTimeout, TimeUnit.SECONDS);
+
+		running = true;
 	}
 
+	/**
+	 * garbage collecting of open connections.
+	 */
 	private synchronized void checkConnections() {
-		ArrayList<Connection> toRemove = new ArrayList<Connection>();
 		try {
-			this.connectionsLock.readLock().lock();
-			for (Connection it : this.connections.values()) {
-				if (it.isDirty()) {
-					it.close();
-					toRemove.add(it);
-				}
-			}
-
-			for (Connection it : toRemove) {
-				this.removeConnection(it);
-			}
-
-			for (Connection it : this.connections.values()) {
+			connectionsLock.readLock().lock();
+			for (Connection it : connections.values()) {
+				if (it.isDirty()) removeConnection(it);
 				it.setDirty();
 			}
 		} finally {
-			this.connectionsLock.readLock().unlock();
-		}
-
-		try {
-			Thread.sleep(this.connectionTimeout);
-		} catch (InterruptedException e) {
-			Thread.dumpStack();
-			System.exit(-1);
+			connectionsLock.readLock().unlock();
 		}
 	}
 
+	/**
+	 * Get a connection to endpoint. Will create a new one if there is none.
+	 * 
+	 * @param e
+	 * @return
+	 */
 	public Connection getConnection(Endpoint e) {
 		Connection temp;
 		try {
-			this.connectionsLock.readLock().lock();
-			temp = this.connections.get(e);
+			connectionsLock.readLock().lock();
+			if (!running)
+				return null;
+			temp = connections.get(e);
 		} finally {
-			this.connectionsLock.readLock().unlock();
+			connectionsLock.readLock().unlock();
 		}
 		if (temp == null) {
 			ConnectionManager.logger.log(Level.INFO, "connection to: " + e
 					+ " not found, creating new connection.");
-			temp = this.createNewConnection(e);
+			temp = createNewConnection(e);
 		}
 		temp.clean();
 
 		return temp;
 	}
 
+	/**
+	 * opens a new outgoing connection to the endpoint.
+	 * 
+	 * @param e
+	 *            endpoint to connect
+	 * @return new connection to endpoint
+	 */
 	private Connection createNewConnection(Endpoint e) {
 		Connection temp;
 		try {
-			this.connectionsLock.writeLock().lock();
-			temp = this.connections.get(e);
+			connectionsLock.writeLock().lock();
+			temp = connections.get(e);
 			if (temp == null) {
 				temp = new Connection(this, e);
-				temp.init();
-				this.connections.put(e, temp);
+				temp.init(bossThreadPool, workerThreadPool);
+				connections.put(e, temp);
 			}
 		} finally {
-			this.connectionsLock.writeLock().unlock();
+			connectionsLock.writeLock().unlock();
 		}
 		return temp;
 	}
 
-	protected Connection createConnection(IncomingChannelHandler incomingChannel) {
+	/**
+	 * Creates a new connection object using as basis an incomming TCP
+	 * connection.
+	 * 
+	 * @param incomingChannel
+	 * @return
+	 */
+	Connection createConnection(IncomingChannelHandler incomingChannel) {
 		Connection temp;
 		try {
-			this.connectionsLock.writeLock().lock();
+			connectionsLock.writeLock().lock();
 			Endpoint endpoint = incomingChannel.getEndpoint();
 
-			temp = this.connections.get(endpoint);
+			temp = connections.get(endpoint);
 			if (temp == null) {
 				temp = new Connection(this, endpoint, incomingChannel);
-				this.connections.put(endpoint, temp);
-			} else {
+				connections.put(endpoint, temp);
+			} else
 				temp.addIncomingChannel(incomingChannel);
-			}
 		} finally {
-			this.connectionsLock.writeLock().unlock();
+			connectionsLock.writeLock().unlock();
 		}
 		return temp;
 	}
 
-	public void removeConnection(Connection it) {
+	/**
+	 * Schedule a connection to be destroyed
+	 * 
+	 * @param it
+	 */
+	void removeConnection(Connection it) {
+		ConnectionManager.logger.log(Level.INFO, selfEndpoint + " requesting remove channel with "
+				+ it.otherEndpoint);
+		class RemoveConnection implements Runnable {
+			private final Connection conn;
+
+			@Override
+			public void run() {
+				internalRemoveConnection(conn);
+			}
+
+			RemoveConnection(Connection conn) {
+				this.conn = conn;
+			}
+		}
+		cleanupThread.submit(new RemoveConnection(it));
+	}
+
+	/**
+	 * Remove and destroy a connection
+	 * 
+	 * @param it
+	 */
+	private void internalRemoveConnection(Connection it) {
 		try {
-			this.connectionsLock.writeLock().lock();
-			this.connections.remove(it.getOtherEndpoint());
+			connectionsLock.writeLock().lock();
+			if (!running)
+				return;
+			connections.remove(it.getOtherEndpoint());
 			it.close();
 		} finally {
-			this.connectionsLock.writeLock().unlock();
+			connectionsLock.writeLock().unlock();
 		}
 	}
 
-	public Executor getBossThreadPool() {
-		return this.bossThreadPool;
+	/**
+	 * Shutdown this Manager and release all resources. This method may take a
+	 * while to finish.
+	 */
+	public void shutdown() {
+		try {
+			connectionsLock.writeLock().lock();
+			if (!running)
+				return;
+
+			ConnectionManager.logger.log(Level.INFO, "Shutting down ConnectionManager");
+			for (Connection it : connections.values())
+				it.close();
+			allChannels.close().awaitUninterruptibly();
+			ConnectionManager.logger.log(Level.INFO, "Closed all channels. Releasing resources");
+			serverBootstrap.releaseExternalResources();
+			ConnectionManager.logger.log(Level.INFO, "Shutting down ThreadPools");
+			bossThreadPool.shutdownNow();
+			workerThreadPool.shutdownNow();
+			cleanupThread.shutdownNow();
+			connections.clear();
+			ConnectionManager.logger.log(Level.INFO, "Shutdown complete");
+
+			running = false;
+		} finally {
+			connectionsLock.writeLock().unlock();
+		}
 	}
 
-	public Executor getWorkerThreadPool() {
-		return this.workerThreadPool;
+	void deliverEvent(Endpoint source, Object event) {
+		toDeliver.processEvent(source, event);
 	}
 
-	public EventReceiver getToDeliver() {
-		return this.toDeliver;
+	void addChannel(Endpoint otherEndpoint, Channel c) {
+		ConnectionManager.logger.log(Level.INFO, selfEndpoint + " estabilished channel with "
+				+ otherEndpoint);
+		allChannels.add(c);
 	}
 
 	public Endpoint getSelfEndpoint() {
-		return this.selfEndpoint;
+		return selfEndpoint;
 	}
 
 	@Override
 	public String toString() {
-		return "ConnectionManager at " + this.selfEndpoint + " connections: "
-				+ this.connections.values();
-	}
-
-	public void shutdown() {
-		for (Connection it : this.connections.values()) {
-			it.close();
-		}
-		this.serverBootstrap.releaseExternalResources();
-		this.connections.clear();
+		return "ConnectionManager at " + selfEndpoint + " connections: "
+				+ connections.values();
 	}
 }

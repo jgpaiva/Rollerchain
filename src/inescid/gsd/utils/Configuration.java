@@ -1,7 +1,10 @@
 package inescid.gsd.utils;
 
 public class Configuration {
-	final static int CONNECTION_TIMEOUT = 60000;
+	/**
+	 * Get the time between garbage collection of connections. In seconds.
+	 */
+	final static int CONNECTION_TIMEOUT = 60;
 
 	public static int getConnectionTimeout() {
 		return Configuration.CONNECTION_TIMEOUT;

@@ -1,4 +1,4 @@
-package inescid.gsd.rollerchain.interfaces;
+package inescid.gsd.centralizedrollerchain.interfaces;
 
 import java.io.Serializable;
 
