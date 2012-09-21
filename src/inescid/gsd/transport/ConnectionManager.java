@@ -1,7 +1,6 @@
 package inescid.gsd.transport;
 
 import inescid.gsd.common.EventReceiver;
-import inescid.gsd.utils.Configuration;
 
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -98,7 +97,7 @@ public class ConnectionManager {
 
 		// Bind and start to accept incoming connections.
 		Channel retVal = serverBootstrap.bind(new InetSocketAddress(selfEndpoint.port));
-		ConnectionManager.logger.log(Level.INFO, "starting server at localhost:"
+		ConnectionManager.logger.log(Level.FINE, "starting server at localhost:"
 				+ selfEndpoint.port + " channel:" + retVal);
 		allChannels.add(retVal);
 
@@ -145,7 +144,7 @@ public class ConnectionManager {
 			connectionsLock.readLock().unlock();
 		}
 		if (temp == null) {
-			ConnectionManager.logger.log(Level.INFO, "connection to: " + e
+			ConnectionManager.logger.log(Level.FINE, "connection to: " + e
 					+ " not found, creating new connection.");
 			temp = createNewConnection(e);
 		}
@@ -174,6 +173,9 @@ public class ConnectionManager {
 		} finally {
 			connectionsLock.writeLock().unlock();
 		}
+		ConnectionManager.logger.log(Level.FINE, selfEndpoint
+				+ " estabilished outgoing connection with "
+				+ temp.otherEndpoint);
 		return temp;
 	}
 
@@ -199,6 +201,9 @@ public class ConnectionManager {
 		} finally {
 			connectionsLock.writeLock().unlock();
 		}
+		ConnectionManager.logger.log(Level.FINE, selfEndpoint
+				+ " estabilished incomming connection with "
+				+ temp.otherEndpoint);
 		return temp;
 	}
 
@@ -208,7 +213,7 @@ public class ConnectionManager {
 	 * @param it
 	 */
 	void removeConnection(Connection it) {
-		ConnectionManager.logger.log(Level.INFO, selfEndpoint + " requesting remove channel with "
+		ConnectionManager.logger.log(Level.FINE, selfEndpoint + " requesting remove channel with "
 				+ it.otherEndpoint);
 		class RemoveConnection implements Runnable {
 			private final Connection conn;
@@ -275,9 +280,7 @@ public class ConnectionManager {
 		toDeliver.processEvent(source, event);
 	}
 
-	void addChannel(Endpoint otherEndpoint, Channel c) {
-		ConnectionManager.logger.log(Level.INFO, selfEndpoint + " estabilished channel with "
-				+ otherEndpoint);
+	void addChannel(Channel c) {
 		allChannels.add(c);
 	}
 

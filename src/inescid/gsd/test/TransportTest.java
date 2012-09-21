@@ -18,7 +18,7 @@ import java.util.logging.Logger;
 
 public class TransportTest implements EventReceiver {
 	private static final Logger logger = Logger.getLogger(
-			TransportTest.class.getName());
+			Connection.class.getName());
 	private static final int INSTANCES = 3;
 	private static final String HOSTNAME = "localhost";
 	private static final int PORT = 8071;
@@ -36,11 +36,11 @@ public class TransportTest implements EventReceiver {
 
 	public TransportTest(int id, int otherId) {
 		this.id = id;
-		this.contact = new Endpoint(TransportTest.HOSTNAME, TransportTest.PORT + otherId);
-		this.endpoint = new Endpoint(TransportTest.HOSTNAME, TransportTest.PORT + this.id);
-		this.knownEndpoints.add(this.endpoint);
-		this.tp = Executors.newScheduledThreadPool(1);
-		this.tp.submit(new Runnable() {
+		contact = new Endpoint(TransportTest.HOSTNAME, TransportTest.PORT + otherId);
+		endpoint = new Endpoint(TransportTest.HOSTNAME, TransportTest.PORT + this.id);
+		knownEndpoints.add(endpoint);
+		tp = Executors.newScheduledThreadPool(1);
+		tp.submit(new Runnable() {
 			@Override
 			public void run() {
 				TransportTest.this.init();
@@ -49,9 +49,9 @@ public class TransportTest implements EventReceiver {
 	}
 
 	public void init() {
-		this.connectionManager = new ConnectionManager(this, this.endpoint);
+		connectionManager = new ConnectionManager(this, endpoint);
 
-		this.tp.scheduleAtFixedRate(new Runnable() {
+		tp.scheduleAtFixedRate(new Runnable() {
 			public void run() {
 				TransportTest.this.round();
 			}
@@ -59,26 +59,24 @@ public class TransportTest implements EventReceiver {
 	}
 
 	public void round() {
-		if (this.knownEndpoints.size() == TransportTest.INSTANCES) {
-			System.out.println(this.id + " is finished: " + this.knownEndpoints);
-			System.out.println(this.connectionManager);
+		if (knownEndpoints.size() == TransportTest.INSTANCES) {
+			System.out.println(id + " is finished: " + knownEndpoints);
+			System.out.println(connectionManager);
 		}
-		Endpoint temp = Utils.getRandomEl(this.knownEndpoints);
+		Endpoint temp = Utils.getRandomEl(knownEndpoints);
 
-		if (this.currentRound <= TransportTest.INSTANCES + 3) {
-			Connection connection = this.connectionManager.getConnection(temp);
-			connection.sendMessage(new Message(this.knownEndpoints));
+		if (currentRound <= (TransportTest.INSTANCES + 3)) {
+			Connection connection = connectionManager.getConnection(temp);
+			connection.sendMessage(new Message(knownEndpoints));
 		}
-		if (this.currentRound > TransportTest.INSTANCES + 4) {
-			this.shutdown();
-		}
+		if (currentRound > (TransportTest.INSTANCES + 4)) shutdown();
 
-		this.currentRound++;
+		currentRound++;
 	}
 
 	@Override
 	public void processEvent(Endpoint source, Object myobj) {
-		this.tp.submit(new EventToProcess(myobj));
+		tp.submit(new EventToProcess(myobj));
 	}
 
 	class EventToProcess implements Runnable {
@@ -86,7 +84,7 @@ public class TransportTest implements EventReceiver {
 
 		@Override
 		public void run() {
-			TransportTest.this.internalProcessEvent(this.obj);
+			internalProcessEvent(obj);
 		}
 
 		EventToProcess(Object obj) {
@@ -95,17 +93,17 @@ public class TransportTest implements EventReceiver {
 	}
 
 	public void internalProcessEvent(Object myobj) {
-		if (myobj instanceof Message) {
-			this.knownEndpoints.addAll(((Message) myobj).knownEndpoints);
-		} else
+		if (myobj instanceof Message)
+			knownEndpoints.addAll(((Message) myobj).knownEndpoints);
+		else
 			throw new RuntimeException("oops");
 	}
 
 	public void shutdown() {
-		if (this.stopped)
+		if (stopped)
 			return;
-		this.connectionManager.shutdown();
-		this.stopped = true;
+		connectionManager.shutdown();
+		stopped = true;
 	}
 
 	private void sleep(long time) {
@@ -119,25 +117,20 @@ public class TransportTest implements EventReceiver {
 	public static void main(String[] args) {
 		ArrayList<TransportTest> tests = new ArrayList<TransportTest>();
 
-		for (int i = 0; i < TransportTest.INSTANCES; i++) {
+		for (int i = 0; i < TransportTest.INSTANCES; i++)
 			tests.add(new TransportTest(i, (i + 1) % TransportTest.INSTANCES));
-		}
 		System.err.println("init done");
 
 		while (true) {
 			int notStopped = 0;
 			for (TransportTest it : tests) {
-				if (it.stopped && it.tp != null) {
+				if (it.stopped && (it.tp != null)) {
 					it.tp.shutdownNow();
 					it.tp = null;
 				}
-				if (!it.stopped) {
-					notStopped++;
-				}
+				if (!it.stopped) notStopped++;
 			}
-			if (notStopped == 0) {
-				break;
-			}
+			if (notStopped == 0) break;
 		}
 		System.err.println("Should quit now");
 	}

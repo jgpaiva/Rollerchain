@@ -21,12 +21,12 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 	private Channel channel;
 
 	private static final Logger logger = Logger.getLogger(
-			Connection.class.getName());
+			IncomingChannelHandler.class.getName());
 
 	public IncomingChannelHandler(ConnectionManager connectionManager) {
 		this.connectionManager = connectionManager;
 		channel = null;
-		IncomingChannelHandler.logger.log(Level.INFO, "init");
+		IncomingChannelHandler.logger.log(Level.FINER, "New incoming channel created");
 	}
 
 	@Override
@@ -34,7 +34,7 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 			ChannelHandlerContext ctx, ChannelStateEvent e) {
 		InetSocketAddress addr = (InetSocketAddress) e.getChannel().getRemoteAddress();
 		channel = e.getChannel();
-		connectionManager.addChannel(otherEndpoint, channel);
+		connectionManager.addChannel(channel);
 	}
 
 	@Override

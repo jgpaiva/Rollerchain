@@ -1,62 +1,82 @@
 package inescid.gsd.centralizedrollerchain;
 
+import inescid.gsd.centralizedrollerchain.events.Divide;
+import inescid.gsd.centralizedrollerchain.events.KeepAlive;
+import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
-import inescid.gsd.centralizedrollerchain.interfaces.Event;
-import inescid.gsd.centralizedrollerchain.utils.Pair;
-import inescid.gsd.common.EventReceiver;
-import inescid.gsd.transport.ConnectionManager;
+import inescid.gsd.centralizedrollerchain.events.WorkerInit;
+import inescid.gsd.centralizedrollerchain.internalevents.DieEvent;
 import inescid.gsd.transport.Endpoint;
 
 import java.util.Set;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public class WorkerNode implements EventReceiver {
-	private final ConnectionManager connectionManager;
-	private final Endpoint endpoint;
+public class WorkerNode extends Node {
 	private final Endpoint masterEndpoint;
 
 	private final WorkerNodeInternalState s = new WorkerNodeInternalState();
 
-	PriorityBlockingQueue<Pair<Endpoint, Event>> queue = new PriorityBlockingQueue<Pair<Endpoint, Event>>();
-
-	private static final Logger logger = Logger.getLogger(
-			WorkerNode.class.getName());
-
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
-		this.endpoint = endpoint;
+		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
-		connectionManager = new ConnectionManager(this, endpoint);
-	}
-
-	public void start() {
-		while (true)
-			try {
-				Pair<Endpoint, Event> res = queue.take();
-				processEventInternal(res.getFst(), res.getSnd());
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-1);
-			}
 	}
 
 	@Override
-	public void processEvent(Endpoint source, Object message) {
-		if (message instanceof Event)
-			queue.add(new Pair<Endpoint, Event>(source, (Event) message));
+	public void processEventInternal(Endpoint source, Object message) {
+		Node.logger.log(Level.FINE, "worker " + endpoint + " R: " + source + " / " + message);
+		if (message instanceof SetNeighbours)
+			processSetNeighbours(source, (SetNeighbours) message);
+		else if (message instanceof Divide)
+			processDivide(source, (Divide) message);
+		else if (message instanceof Merge)
+			processMerge(source, (Merge) message);
+		else if (message instanceof DieEvent)
+			processDieEvent(source, (DieEvent) message);
+		else if (message instanceof KeepAlive)
+			; // drop
 		else
-			WorkerNode.logger.log(Level.SEVERE, "Received unknown event: " + message);
+			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
 	}
 
-	public void processEventInternal(Endpoint source, Event message) {
-		if (message instanceof SetNeighbours) processSetNeighbours((SetNeighbours) message);
+	@Override
+	public void start() {
+		sendMessage(masterEndpoint, new WorkerInit());
+		super.start();
 	}
 
-	private void processSetNeighbours(SetNeighbours e) {
+	private void processSetNeighbours(Endpoint source, SetNeighbours e) {
 		s.setGroup(e.getGroup());
 		s.setSuccessorGroup(e.getSuccessorGroup());
 		s.setPredecessorGroup(e.getPredecessorGroup());
+	}
+
+	private void processDivide(Endpoint source, Divide message) {
+		if (message.getNewGroup().contains(endpoint)) {
+			s.setPredecessorGroup(message.getOldGroup());
+			if (s.getSuccessorGroup() == null)
+				s.setSuccessorGroup(message.getOldGroup());
+		} else {
+			s.setSuccessorGroup(message.getNewGroup());
+			if (s.getPredecessorGroup() == null)
+				s.setPredecessorGroup(message.getNewGroup());
+		}
+	}
+
+	private void processMerge(Endpoint source, Merge message) {
+		if (message.getSmallGroup().contains(endpoint)) {
+			s.setSuccessorGroup(message.getSuccessorGroup());
+			if (s.getSuccessorGroup() == null)
+				s.setPredecessorGroup(null);
+		}
+		else if (message.getLargeGroup().contains(endpoint)) {
+			s.setPredecessorGroup(message.getPredecessorGroup());
+			if (s.getPredecessorGroup() == null)
+				s.setSuccessorGroup(null);
+		}
+	}
+
+	private void processDieEvent(Endpoint source, DieEvent message) {
+		super.die();
 	}
 }
 

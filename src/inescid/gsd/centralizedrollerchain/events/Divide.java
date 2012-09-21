@@ -22,4 +22,9 @@ public class Divide extends Event {
 	public TreeSet<Endpoint> getOldGroup() {
 		return oldGroup;
 	}
+
+	@Override
+	public String toString() {
+		return super.toString() + " :" + " newGroup:" + newGroup + " oldGroup:" + oldGroup;
+	}
 }

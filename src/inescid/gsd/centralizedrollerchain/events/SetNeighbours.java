@@ -6,6 +6,8 @@ import inescid.gsd.transport.Endpoint;
 import java.util.Set;
 
 public class SetNeighbours extends Event {
+	private static final long serialVersionUID = 1851878886720999187L;
+
 	private final Set<Endpoint> group;
 	private final Set<Endpoint> predGroup;
 	private final Set<Endpoint> succGroup;
@@ -27,5 +29,11 @@ public class SetNeighbours extends Event {
 
 	public Set<Endpoint> getPredecessorGroup() {
 		return predGroup;
+	}
+
+	@Override
+	public String toString() {
+		return super.toString() + ":" + "myGroup:" + group + " preds:" + predGroup + " succs:"
+				+ succGroup;
 	}
 }

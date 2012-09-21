@@ -1,86 +1,74 @@
 package inescid.gsd.centralizedrollerchain;
 
+import inescid.gsd.centralizedrollerchain.MasterNode.Group;
 import inescid.gsd.centralizedrollerchain.events.Divide;
+import inescid.gsd.centralizedrollerchain.events.KeepAlive;
 import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
-import inescid.gsd.centralizedrollerchain.interfaces.Event;
-import inescid.gsd.centralizedrollerchain.utils.Pair;
-import inescid.gsd.common.EventReceiver;
-import inescid.gsd.transport.Connection;
-import inescid.gsd.transport.ConnectionManager;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.utils.Utils;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Executors;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public class MasterNode implements EventReceiver {
-	private final ConnectionManager connectionManager;
+public class MasterNode extends Node {
 	private final ScheduledExecutorService executor;
-	private final Endpoint endpoint;
+
 	private final MasterNodeInternalState s = new MasterNodeInternalState();
 
-	PriorityBlockingQueue<Pair<Endpoint, Event>> queue = new PriorityBlockingQueue<Pair<Endpoint, Event>>();
-
-	private static final Logger logger = Logger.getLogger(
-			MasterNode.class.getName());
 	private static final int MAX_REPLICATION = Configuration.getMaxReplication();
+	private static final int MIN_REPLICATION = Configuration.getMinReplication();
+
+	private static final long KEEP_ALIVE_INTERVAL = Configuration.getKeepAliveInterval();
 
 	public MasterNode(Endpoint endpoint) {
-		// TODO: add keepalives on connections
+		super(endpoint);
 		executor = Executors.newScheduledThreadPool(1);
-		this.endpoint = endpoint;
-		connectionManager = new ConnectionManager(this, endpoint);
-	}
-
-	public void start() {
-		while (true)
-			try {
-				Pair<Endpoint, Event> res = queue.take();
-				processEventInternal(res.getFst(), res.getSnd());
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-1);
-			}
 	}
 
 	@Override
-	public void processEvent(Endpoint source, Object message) {
-		if (message instanceof Event)
-			queue.add(new Pair<Endpoint, Event>(source, (Event) message));
+	protected void processEventInternal(Endpoint source, Object object) {
+		Node.logger.log(Level.FINE, "master R: " + source + " / " + object);
+		if (object instanceof WorkerInit)
+			processWorkerInit(source, (WorkerInit) object);
+		else if (object instanceof DeathNotification)
+			processDeathNotification(source, (DeathNotification) object);
 		else
-			MasterNode.logger.log(Level.SEVERE, "Received unknown event: " + message);
-	}
-
-	public void sendMessage(Endpoint endpoint, Event message) {
-		Connection temp = connectionManager.getConnection(endpoint);
-		temp.sendMessage(message);
-	}
-
-	private void processEventInternal(Endpoint source, Event message) {
-		if (message instanceof WorkerInit) processWorkerInit(source, (WorkerInit) message);
+			Node.logger.log(Level.SEVERE, "Received unknown event: " + object);
 	}
 
 	private void processWorkerInit(Endpoint source, WorkerInit e) {
-		if (s.addToWorkerList(e))
-			MasterNode.logger.log(Level.SEVERE, "worker set contains " + source + ". worker set: "
-					+ s.getWorkerSet());
-
+		Group toJoin = null;
 		if (MasterNode.allGroups.size() == 0)
-			createSeedGroup(e.getWorker());
+			toJoin = createSeedGroup(source);
 		else {
-			Group toJoin = getGroupToJoin();
-			toJoin.joinNode(e.getWorker());
+			toJoin = getGroupToJoin();
+			toJoin.addNode(source);
+		}
 
-			if (toJoin.size() > MasterNode.MAX_REPLICATION) toJoin.divide();
+		if (s.addToWorkerList(source, toJoin) != null)
+			Node.logger.log(Level.SEVERE, "worker set contains " + source
+					+ " associated with group: " + toJoin);
+
+		if (toJoin.size() > MasterNode.MAX_REPLICATION) toJoin.divide();
+	}
+
+	private void processDeathNotification(Endpoint source, DeathNotification object) {
+		Group oldGroup = s.removeWorkerFromList(source);
+		if (oldGroup != null) {
+			oldGroup.removeNode(source);
+			if (oldGroup.size() < MasterNode.MIN_REPLICATION) oldGroup.merge();
 		}
 	}
 
@@ -101,23 +89,80 @@ public class MasterNode implements EventReceiver {
 		return toReturn;
 	}
 
-	Group createSeedGroup(Endpoint node) {
+	private Group createSeedGroup(Endpoint node) {
 		TreeSet<Endpoint> set = new TreeSet<Endpoint>();
 		set.add(node);
-		Group toReturn = new Group();
-		toReturn.setFinger(set);
-		// toReturn.keys = Settings.getNKeys();
-		MasterNode.allGroups.add(toReturn);
-		sendMessage(node, new SetNeighbours(toReturn.finger, null, null));
+		Group toReturn = createGroup(set);
+		sendMessage(node, new SetNeighbours(toReturn.getFinger(), null, null));
 		return toReturn;
 	}
 
+	private Group createGroup(TreeSet<Endpoint> setNew) {
+		Group toReturn = new Group();
+		toReturn.setFinger(setNew);
+		MasterNode.allGroups.add(toReturn);
+		return toReturn;
+	}
+
+	class CheckGroupConnections implements Runnable {
+		private final Group group;
+
+		public CheckGroupConnections(Group group) {
+			this.group = group;
+		}
+
+		@Override
+		public void run() {
+			checkGroupConnections(group);
+		}
+	}
+
+	private void checkGroupConnections(Group group) {
+		for (Endpoint it : group.getFinger())
+			sendMessage(it, new KeepAlive());
+	}
+
 	static final HashSet<Group> allGroups = new HashSet<Group>();
+
+	public void checkIntegrity() {
+		System.out.println("Checking Integrity");
+		Set<Endpoint> allNodes = new TreeSet<Endpoint>();
+		for (Group it : MasterNode.allGroups)
+			for (Endpoint it2 : it.finger) {
+				if (!allNodes.add(it2))
+					System.out.println("ERROR: Node " + it2 + " was in group " + it
+							+ " and in some other group!");
+				Group res = s.getWorkerSet().get(it2);
+				if (res != it)
+					System.out.println("ERROR: Node " + it2 + " was registered in group " + res
+							+ " and should be in " + it);
+			}
+		if (allNodes.size() != s.getWorkerSet().size())
+			System.out.println("WorkerSet and AllNodes differ!" + " WorkerSet:"
+					+ s.getWorkerSet().size() + " allNodes:" + allNodes.size());
+		System.out.println("Done checking Integrity");
+	}
 
 	class Group {
 		private TreeSet<Endpoint> finger;
 		private Group successor;
 		private Group predecessor;
+		private final ScheduledFuture<?> schedule;
+
+		public Group() {
+			schedule = executor.scheduleAtFixedRate(new CheckGroupConnections(
+					this), MasterNode.KEEP_ALIVE_INTERVAL,
+					MasterNode.KEEP_ALIVE_INTERVAL, TimeUnit.SECONDS);
+		}
+
+		public void cancelSchedule() {
+			if (getFinger().size() > 0) {
+				Node.logger
+						.log(Level.SEVERE, "canceling a schedule for a group with nodes: + this");
+				Thread.dumpStack();
+			}
+			schedule.cancel(false);
+		}
 
 		// private int keys = 0;
 
@@ -133,6 +178,7 @@ public class MasterNode implements EventReceiver {
 			finger = set;
 		}
 
+		@SuppressWarnings("unchecked")
 		void merge() {
 			if (MasterNode.allGroups.size() == 1) return;
 			assert (successor != null);
@@ -144,6 +190,10 @@ public class MasterNode implements EventReceiver {
 			boolean ret = MasterNode.allGroups.remove(this);
 			assert (ret);
 			successor.finger.addAll(finger);
+			moveAllFrom(this, successor, finger);
+			finger.clear();
+			cancelSchedule();
+
 			// int oldKeys = this.keys;
 			// int successorKeys = this.successor.keys;
 			// this.successor.keys = successorKeys + oldKeys;
@@ -158,7 +208,9 @@ public class MasterNode implements EventReceiver {
 				successor.predecessor = predecessor;
 			}
 			for (Endpoint it : successor.finger)
-				sendMessage(it, new Merge(smallGroup, successorGroup));
+				sendMessage(it, new Merge(smallGroup, successorGroup,
+						successor != null ? successor.finger : null,
+						predecessor != null ? predecessor.finger : null));
 		}
 
 		void divide() {
@@ -182,9 +234,10 @@ public class MasterNode implements EventReceiver {
 			// assert (oldKeys > 0) : oldKeys;
 
 			while (finger.size() > oldSize)
-				setNew.add(Utils.removeRandomEl(finger));
+				setNew.add(Utils.removeRandomEl(getFinger()));
 
 			Group newGroup = createGroup(setNew);
+			moveAllFrom(this, newGroup, newGroup.finger);
 
 			assert ((newGroup.size() + size()) == initialSize) : newGroup.size() + " " + size()
 					+ " " + initialSize + " " + oldGroup.size() + " " + setNew.size();
@@ -209,21 +262,30 @@ public class MasterNode implements EventReceiver {
 				sendMessage(it, new Divide(newGroup.finger, finger));
 		}
 
-		private Group createGroup(TreeSet<Endpoint> setNew) {
-			Group toReturn = new Group();
-			toReturn.finger = setNew;
-			MasterNode.allGroups.add(toReturn);
-			return toReturn;
+		private void moveAllFrom(Group group, Group newGroup, TreeSet<Endpoint> toMove) {
+			for (Endpoint it : toMove) {
+				Group res = s.addToWorkerList(it, newGroup);
+				if (res != group)
+					Node.logger.log(Level.SEVERE, "Node was in wrong group! Should be in " + this
+							+ " but was in " + res);
+			}
 		}
 
 		public int size() {
 			return finger.size();
 		}
 
-		void joinNode(Endpoint node) {
+		void addNode(Endpoint node) {
 			finger.add(node);
-			sendMessage(node, new SetNeighbours(finger, predecessor.finger,
-					successor.finger));
+			sendMessage(node, new SetNeighbours(finger, predecessor != null ? predecessor.finger
+					: null,
+					successor != null ? successor.finger : null));
+		}
+
+		public void removeNode(Endpoint source) {
+			if (!finger.remove(source))
+				Node.logger
+						.log(Level.SEVERE, "Endpoint " + endpoint + " was not in finger!" + this);
 		}
 
 		@Override
@@ -236,13 +298,17 @@ public class MasterNode implements EventReceiver {
 }
 
 class MasterNodeInternalState {
-	Set<Endpoint> workerList = new HashSet<Endpoint>();
+	Map<Endpoint, Group> workerList = new TreeMap<Endpoint, Group>();
 
-	public boolean addToWorkerList(WorkerInit e) {
-		return workerList.add(e.getWorker());
+	public Group addToWorkerList(Endpoint e, Group g) {
+		return workerList.put(e, g);
 	}
 
-	public Set<Endpoint> getWorkerSet() {
-		return Collections.unmodifiableSet(workerList);
+	public Group removeWorkerFromList(Endpoint e) {
+		return workerList.remove(e);
+	}
+
+	public Map<Endpoint, Group> getWorkerSet() {
+		return Collections.unmodifiableMap(workerList);
 	}
 }

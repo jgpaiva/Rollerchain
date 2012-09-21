@@ -1,4 +1,4 @@
-package inescid.gsd.utils;
+package inescid.gsd.transport;
 
 public class Configuration {
 	/**

@@ -80,7 +80,7 @@ public class Connection extends SimpleChannelUpstreamHandler {
 		bootstrap.setOption("keepAlive", true);
 
 		// Start the connection attempt.
-		Connection.logger.log(Level.INFO, "Connecting to: " + otherEndpoint);
+		Connection.logger.log(Level.FINE, "Connecting to: " + otherEndpoint);
 		ChannelFuture future = bootstrap.connect(otherEndpoint.getInetAddress());
 
 		// Wait until the connection attempt succeeds or fails.
@@ -95,7 +95,7 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	void channelConnectedCallback(ChannelFuture future) {
 		assert (channel == null);
 		if (future.getChannel() != null)
-			connectionManager.addChannel(otherEndpoint, future.getChannel());
+			connectionManager.addChannel(future.getChannel());
 		if (future.isSuccess())
 			synchronized (this) {
 				channel = future.getChannel();
@@ -151,7 +151,7 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	@Override
 	public void handleUpstream(
 			ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
-		if (e instanceof ChannelStateEvent) Connection.logger.info(e.toString());
+		if (e instanceof ChannelStateEvent) Connection.logger.log(Level.FINER, e.toString());
 		super.handleUpstream(ctx, e);
 	}
 
@@ -183,20 +183,20 @@ public class Connection extends SimpleChannelUpstreamHandler {
 				channel.close();
 				channel = null;
 				hadChannel = true;
-				Connection.logger.log(Level.INFO, "Closed outgoing channel");
+				Connection.logger.log(Level.FINER, "Closed outgoing channel");
 			}
 			boolean hadIncommingChannel = false;
 			if (incomingChannel != null) {
 				incomingChannel.close();
 				incomingChannel = null;
 				hadIncommingChannel = true;
-				Connection.logger.log(Level.INFO, "Closed incoming channel");
+				Connection.logger.log(Level.FINER, "Closed incoming channel");
 			}
 			outgoing.clear();
 			if (bootstrap != null) {
-				Connection.logger.log(Level.INFO, "Releasing external resources");
+				Connection.logger.log(Level.FINE, "Releasing external resources");
 				bootstrap.releaseExternalResources();
-				Connection.logger.log(Level.INFO, "Released external resources");
+				Connection.logger.log(Level.FINE, "Released external resources");
 			} else if (!hadIncommingChannel)
 				Connection.logger.log(Level.SEVERE, "had no bootstrap not incoming channel!");
 			closed = true;
