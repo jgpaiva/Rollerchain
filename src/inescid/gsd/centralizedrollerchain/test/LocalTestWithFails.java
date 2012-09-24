@@ -14,19 +14,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class LocalTestWithFails {
-	static class RunWorker implements Runnable {
-		private final WorkerNode w;
-
-		RunWorker(WorkerNode w) {
-			this.w = w;
-		}
-
-		@Override
-		public void run() {
-			w.start();
-		}
-	}
-
 	private static final int MAX_WORKERS = 20;
 
 	public static void main(String[] args) {
@@ -35,11 +22,7 @@ public class LocalTestWithFails {
 		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
 		final MasterNode masterNode = new MasterNode(masterEndpoint);
-		Thread masterNodeThread = new Thread(new Runnable() {
-			public void run() {
-				masterNode.start();
-			}
-		});
+		Thread masterNodeThread = new Thread(masterNode);
 		masterNodeThread.start();
 		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
 		LocalTestWithFails.setHandlerLevel();
@@ -59,7 +42,7 @@ public class LocalTestWithFails {
 
 		ArrayList<Thread> threads = new ArrayList<Thread>();
 		for (WorkerNode it : workers)
-			threads.add(new Thread(new RunWorker(it)));
+			threads.add(new Thread(it));
 		for (Thread it : threads)
 			it.start();
 
@@ -94,7 +77,7 @@ public class LocalTestWithFails {
 			newWorkers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1
 					+ LocalTestWithFails.MAX_WORKERS + it), masterEndpoint));
 		for (WorkerNode it : newWorkers)
-			new Thread(new RunWorker(it)).start();
+			new Thread(it).start();
 
 		System.out.println("Started replacements");
 

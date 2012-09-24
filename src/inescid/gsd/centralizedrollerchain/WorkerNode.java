@@ -39,9 +39,9 @@ public class WorkerNode extends Node {
 	}
 
 	@Override
-	public void start() {
+	public void run() {
 		sendMessage(masterEndpoint, new WorkerInit());
-		super.start();
+		super.run();
 	}
 
 	private void processSetNeighbours(Endpoint source, SetNeighbours e) {

@@ -1,4 +1,4 @@
-package inescid.gsd.common;
+package inescid.gsd.transport.interfaces;
 
 import inescid.gsd.transport.Endpoint;
 

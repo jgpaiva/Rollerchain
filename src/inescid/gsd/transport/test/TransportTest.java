@@ -1,9 +1,9 @@
-package inescid.gsd.test;
+package inescid.gsd.transport.test;
 
-import inescid.gsd.common.EventReceiver;
 import inescid.gsd.transport.Connection;
 import inescid.gsd.transport.ConnectionManager;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.interfaces.EventReceiver;
 import inescid.gsd.utils.Utils;
 
 import java.io.Serializable;

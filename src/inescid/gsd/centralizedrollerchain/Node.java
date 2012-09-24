@@ -3,17 +3,17 @@ package inescid.gsd.centralizedrollerchain;
 import inescid.gsd.centralizedrollerchain.interfaces.Event;
 import inescid.gsd.centralizedrollerchain.interfaces.InternalEvent;
 import inescid.gsd.centralizedrollerchain.utils.PriorityPair;
-import inescid.gsd.common.EventReceiver;
 import inescid.gsd.transport.Connection;
 import inescid.gsd.transport.ConnectionManager;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
+import inescid.gsd.transport.interfaces.EventReceiver;
 
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public abstract class Node implements EventReceiver {
+public abstract class Node implements EventReceiver, Runnable {
 	// Transport layer
 	protected final ConnectionManager connectionManager;
 
@@ -30,7 +30,7 @@ public abstract class Node implements EventReceiver {
 		connectionManager = new ConnectionManager(this, endpoint);
 	}
 
-	public void start() {
+	public void run() {
 		while (true)
 			try {
 				PriorityPair<Endpoint, Object> res = queue.take();
@@ -47,6 +47,7 @@ public abstract class Node implements EventReceiver {
 
 	@Override
 	public void processEvent(Endpoint source, Object message) {
+		Node.logger.log(Level.FINEST, "Queuing event from: " + source + " / " + message);
 		if (message instanceof Event)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
 		else if (message instanceof DeathNotification)
@@ -55,6 +56,7 @@ public abstract class Node implements EventReceiver {
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 2));
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
+		Node.logger.log(Level.FINEST, "Queued event from: " + source + " / " + message);
 	}
 
 	protected void sendMessage(Endpoint endpoint, Event message) {

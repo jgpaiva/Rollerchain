@@ -1,6 +1,6 @@
 package inescid.gsd.transport;
 
-import inescid.gsd.common.EventReceiver;
+import inescid.gsd.transport.interfaces.EventReceiver;
 
 import java.net.InetSocketAddress;
 import java.util.Map;

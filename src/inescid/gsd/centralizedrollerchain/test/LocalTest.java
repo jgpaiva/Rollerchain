@@ -12,19 +12,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class LocalTest {
-	static class RunWorker implements Runnable {
-		private final WorkerNode w;
-
-		RunWorker(WorkerNode w) {
-			this.w = w;
-		}
-
-		@Override
-		public void run() {
-			w.start();
-		}
-	}
-
 	private static final int MAX_WORKERS = 20;
 
 	public static void main(String[] args) {
@@ -33,11 +20,7 @@ public class LocalTest {
 		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
 		final MasterNode masterNode = new MasterNode(masterEndpoint);
-		Thread masterNodeThread = new Thread(new Runnable() {
-			public void run() {
-				masterNode.start();
-			}
-		});
+		Thread masterNodeThread = new Thread(masterNode);
 		masterNodeThread.start();
 		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
 		LocalTest.setHandlerLevel();
@@ -57,7 +40,7 @@ public class LocalTest {
 
 		ArrayList<Thread> threads = new ArrayList<Thread>();
 		for (WorkerNode it : workers)
-			threads.add(new Thread(new RunWorker(it)));
+			threads.add(new Thread(it));
 		for (Thread it : threads)
 			it.start();
 

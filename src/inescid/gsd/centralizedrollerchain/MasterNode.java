@@ -46,6 +46,8 @@ public class MasterNode extends Node {
 			processDeathNotification(source, (DeathNotification) object);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + object);
+		Node.logger.log(Level.FINER, "active nodes:" + s.workerList.size() + "     list: "
+				+ s.workerList);
 	}
 
 	private void processWorkerInit(Endpoint source, WorkerInit e) {
@@ -148,11 +150,13 @@ public class MasterNode extends Node {
 		private Group successor;
 		private Group predecessor;
 		private final ScheduledFuture<?> schedule;
+		private boolean active;
 
 		public Group() {
 			schedule = executor.scheduleAtFixedRate(new CheckGroupConnections(
 					this), MasterNode.KEEP_ALIVE_INTERVAL,
 					MasterNode.KEEP_ALIVE_INTERVAL, TimeUnit.SECONDS);
+			active = true;
 		}
 
 		public void cancelSchedule() {
@@ -162,6 +166,7 @@ public class MasterNode extends Node {
 				Thread.dumpStack();
 			}
 			schedule.cancel(false);
+			active = false;
 		}
 
 		// private int keys = 0;
@@ -292,7 +297,7 @@ public class MasterNode extends Node {
 		public String toString() {
 			return
 			// this.keys +
-			"" + finger + "";
+			"" + finger + "" + (active ? "A" : "I");
 		}
 	}
 }
