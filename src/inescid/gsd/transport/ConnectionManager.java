@@ -13,13 +13,16 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.group.ChannelGroup;
 import org.jboss.netty.channel.group.DefaultChannelGroup;
+import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.jboss.netty.handler.codec.serialization.ClassResolvers;
 import org.jboss.netty.handler.codec.serialization.ObjectDecoder;
@@ -42,6 +45,8 @@ public class ConnectionManager {
 	private final ExecutorService workerThreadPool;
 	// bootstrap for tcp server
 	private final ServerBootstrap serverBootstrap;
+	// bootstrap for tcp client
+	private final ClientBootstrap clientBootstrap;
 
 	// owner of this ConnectionManager. will handled incoming events
 	private final EventReceiver toDeliver;
@@ -109,7 +114,18 @@ public class ConnectionManager {
 			}
 		}, 0, connectionTimeout, TimeUnit.SECONDS);
 
+		clientBootstrap = new ClientBootstrap(
+				new NioClientSocketChannelFactory(bossThreadPool, workerThreadPool));
+
+		ConnectionManager.logger.log(Level.FINEST, "created client bootstrap");
+		// Set up the pipeline factory.
+		clientBootstrap.setPipelineFactory(ConnectionFactory.getDummyPipeline());
+
+		clientBootstrap.setOption("tcpnodelay", true);
+		clientBootstrap.setOption("keepAlive", true);
+
 		running = true;
+		ConnectionManager.logger.log(Level.FINEST, "created connection manager");
 	}
 
 	/**
@@ -118,10 +134,8 @@ public class ConnectionManager {
 	private synchronized void checkConnections() {
 		try {
 			connectionsLock.readLock().lock();
-			for (Connection it : connections.values()) {
-				if (it.isDirty()) removeConnection(it);
-				it.setDirty();
-			}
+			for (Connection it : connections.values())
+				it.checkAlive();
 		} finally {
 			connectionsLock.readLock().unlock();
 		}
@@ -148,8 +162,6 @@ public class ConnectionManager {
 					+ " not found, creating new connection.");
 			temp = createNewConnection(e);
 		}
-		temp.clean();
-
 		return temp;
 	}
 
@@ -163,11 +175,20 @@ public class ConnectionManager {
 	private Connection createNewConnection(Endpoint e) {
 		Connection temp;
 		try {
+			ConnectionManager.logger.log(Level.FINEST, "acquiring write lock");
 			connectionsLock.writeLock().lock();
+			ConnectionManager.logger.log(Level.FINEST, "acquired write lock");
 			temp = connections.get(e);
 			if (temp == null) {
-				temp = new Connection(this, e);
-				temp.init(bossThreadPool, workerThreadPool);
+				ConnectionManager.logger.log(Level.FINE, "Connecting to: " + e);
+				ConnectionFactory connectionFactory = new ConnectionFactory(this, e);
+				clientBootstrap.setPipelineFactory(connectionFactory);
+				ChannelFuture future = clientBootstrap.connect(e.getInetAddress());
+				clientBootstrap.setPipelineFactory(ConnectionFactory.getDummyPipeline());
+				ConnectionManager.logger.log(Level.FINEST, "started connection");
+				connectionFactory.handleConnectionFuture(future);
+
+				temp = connectionFactory.getConnection();
 				connections.put(e, temp);
 			}
 		} finally {
@@ -186,11 +207,10 @@ public class ConnectionManager {
 	 * @param incomingChannel
 	 * @return
 	 */
-	Connection createConnection(IncomingChannelHandler incomingChannel) {
+	Connection createConnection(IncomingChannelHandler incomingChannel, Endpoint endpoint) {
 		Connection temp;
 		try {
 			connectionsLock.writeLock().lock();
-			Endpoint endpoint = incomingChannel.getEndpoint();
 
 			temp = connections.get(endpoint);
 			if (temp == null) {
@@ -208,7 +228,7 @@ public class ConnectionManager {
 	}
 
 	/**
-	 * Schedule a connection to be destroyed
+	 * Schedule a connection to be removed from this object
 	 * 
 	 * @param it
 	 */
@@ -241,7 +261,6 @@ public class ConnectionManager {
 			if (!running)
 				return;
 			connections.remove(it.getOtherEndpoint());
-			it.close();
 		} finally {
 			connectionsLock.writeLock().unlock();
 		}
@@ -259,7 +278,7 @@ public class ConnectionManager {
 
 			ConnectionManager.logger.log(Level.INFO, "Shutting down ConnectionManager");
 			for (Connection it : connections.values())
-				it.close();
+				it.cleanAndClose();
 			allChannels.close().awaitUninterruptibly();
 			ConnectionManager.logger.log(Level.INFO, "Closed all channels. Releasing resources");
 			serverBootstrap.releaseExternalResources();
@@ -292,5 +311,13 @@ public class ConnectionManager {
 	public String toString() {
 		return "ConnectionManager at " + selfEndpoint + " connections: "
 				+ connections.values();
+	}
+
+	public static void die(String string) {
+		Thread.dumpStack();
+		System.out.println("SEVERE ERROR: " + string);
+		System.err.println("SEVERE ERROR: " + string);
+		ConnectionManager.logger.log(Level.SEVERE, string);
+		System.exit(-29);
 	}
 }

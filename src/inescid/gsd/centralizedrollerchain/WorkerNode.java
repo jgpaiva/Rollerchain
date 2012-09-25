@@ -7,6 +7,7 @@ import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.centralizedrollerchain.internalevents.DieEvent;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.interfaces.EventReceiver;
 
 import java.util.Set;
 import java.util.logging.Level;
@@ -16,9 +17,23 @@ public class WorkerNode extends Node {
 
 	private final WorkerNodeInternalState s = new WorkerNodeInternalState();
 
+	private final EventReceiver upperLayer;
+
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
 		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
+		upperLayer = new EventReceiver() {
+			@Override
+			public void processEvent(Endpoint source, Object message) {
+				// discard event
+			}
+		};
+	}
+
+	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, EventReceiver upperLayer) {
+		super(endpoint);
+		this.masterEndpoint = masterEndpoint;
+		this.upperLayer = upperLayer;
 	}
 
 	@Override
@@ -44,10 +59,12 @@ public class WorkerNode extends Node {
 		super.run();
 	}
 
-	private void processSetNeighbours(Endpoint source, SetNeighbours e) {
-		s.setGroup(e.getGroup());
-		s.setSuccessorGroup(e.getSuccessorGroup());
-		s.setPredecessorGroup(e.getPredecessorGroup());
+	private void processSetNeighbours(Endpoint source, SetNeighbours setNeighbours) {
+		s.setGroup(setNeighbours.getGroup());
+		s.setSuccessorGroup(setNeighbours.getSuccessorGroup());
+		s.setPredecessorGroup(setNeighbours.getPredecessorGroup());
+
+		upperLayer.processEvent(source, setNeighbours);
 	}
 
 	private void processDivide(Endpoint source, Divide message) {
@@ -60,6 +77,7 @@ public class WorkerNode extends Node {
 			if (s.getPredecessorGroup() == null)
 				s.setPredecessorGroup(message.getNewGroup());
 		}
+		upperLayer.processEvent(source, message);
 	}
 
 	private void processMerge(Endpoint source, Merge message) {
@@ -73,6 +91,8 @@ public class WorkerNode extends Node {
 			if (s.getPredecessorGroup() == null)
 				s.setSuccessorGroup(null);
 		}
+
+		upperLayer.processEvent(source, message);
 	}
 
 	private void processDieEvent(Endpoint source, DieEvent message) {

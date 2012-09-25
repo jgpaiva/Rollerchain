@@ -16,15 +16,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 public class MasterNode extends Node {
-	private final ScheduledExecutorService executor;
-
 	private final MasterNodeInternalState s = new MasterNodeInternalState();
 
 	private static final int MAX_REPLICATION = Configuration.getMaxReplication();
@@ -34,7 +30,6 @@ public class MasterNode extends Node {
 
 	public MasterNode(Endpoint endpoint) {
 		super(endpoint);
-		executor = Executors.newScheduledThreadPool(1);
 	}
 
 	@Override
@@ -67,10 +62,18 @@ public class MasterNode extends Node {
 	}
 
 	private void processDeathNotification(Endpoint source, DeathNotification object) {
+		Node.logger.finest("removing worker from list");
 		Group oldGroup = s.removeWorkerFromList(source);
+		Node.logger.finest("removed worker from list");
 		if (oldGroup != null) {
+			Node.logger.finest("removing node from oldGroup");
 			oldGroup.removeNode(source);
-			if (oldGroup.size() < MasterNode.MIN_REPLICATION) oldGroup.merge();
+			Node.logger.finest("removed node from oldGroup");
+			if (oldGroup.size() < MasterNode.MIN_REPLICATION) {
+				Node.logger.finest("merging oldGroup");
+				oldGroup.merge();
+				Node.logger.finest("merged oldGroup");
+			}
 		}
 	}
 
@@ -120,8 +123,10 @@ public class MasterNode extends Node {
 	}
 
 	private void checkGroupConnections(Group group) {
+		Node.logger.log(Level.FINE, "checking connections");
 		for (Endpoint it : group.getFinger())
 			sendMessage(it, new KeepAlive());
+		Node.logger.log(Level.FINE, "checked connections");
 	}
 
 	static final HashSet<Group> allGroups = new HashSet<Group>();
@@ -192,12 +197,18 @@ public class MasterNode extends Node {
 			TreeSet<Endpoint> successorGroup = (TreeSet<Endpoint>) successor.finger
 					.clone();
 
+			Node.logger.finest("step 1");
 			boolean ret = MasterNode.allGroups.remove(this);
+			Node.logger.finest("step 2");
 			assert (ret);
 			successor.finger.addAll(finger);
+			Node.logger.finest("step 3");
 			moveAllFrom(this, successor, finger);
+			Node.logger.finest("step 4");
 			finger.clear();
+			Node.logger.finest("step 5");
 			cancelSchedule();
+			Node.logger.finest("step 6");
 
 			// int oldKeys = this.keys;
 			// int successorKeys = this.successor.keys;
@@ -212,10 +223,14 @@ public class MasterNode extends Node {
 				predecessor.successor = successor;
 				successor.predecessor = predecessor;
 			}
-			for (Endpoint it : successor.finger)
+			for (Endpoint it : successor.finger) {
+				Node.logger.finest("step 7");
 				sendMessage(it, new Merge(smallGroup, successorGroup,
 						successor != null ? successor.finger : null,
 						predecessor != null ? predecessor.finger : null));
+				Node.logger.finest("step 8");
+			}
+			Node.logger.finest("step 9");
 		}
 
 		void divide() {

@@ -2,48 +2,43 @@ package inescid.gsd.transport;
 
 import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.transport.events.EndpointInfo;
+import inescid.gsd.transport.exception.TransportException;
 
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.handler.codec.serialization.ClassResolvers;
-import org.jboss.netty.handler.codec.serialization.ObjectDecoder;
-import org.jboss.netty.handler.codec.serialization.ObjectEncoder;
 
 public class Connection extends SimpleChannelUpstreamHandler {
-	boolean dirty;
-
 	public final Endpoint otherEndpoint;
 
 	private final ConnectionManager connectionManager;
 	private Channel channel;
-	private ClientBootstrap bootstrap;
 
 	private final Queue<Object> outgoing = new LinkedList<Object>();;
 
+	private boolean shouldClose = false;
 	private boolean closed = false;
 
 	private IncomingChannelHandler incomingChannel;
 
 	private static final Logger logger = Logger.getLogger(
 			Connection.class.getName());
+
+	public Connection(ConnectionManager connectionManager) {
+		this.connectionManager = connectionManager;
+		channel = null;
+		otherEndpoint = null;// fix me
+	}
 
 	public Connection(ConnectionManager connectionManager, Endpoint endpoint) {
 		this.connectionManager = connectionManager;
@@ -59,60 +54,29 @@ public class Connection extends SimpleChannelUpstreamHandler {
 		this.incomingChannel = incomingChannel;
 	}
 
-	public void init(ExecutorService bossThreadPool, ExecutorService workerThreadPool) {
-		// Configure the client.
-		bootstrap = new ClientBootstrap(
-				new NioClientSocketChannelFactory(bossThreadPool, workerThreadPool));
-
-		// Set up the pipeline factory.
-		bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
-			@Override
-			public ChannelPipeline getPipeline() throws Exception {
-				return Channels.pipeline(
-						new ObjectEncoder(),
-						new ObjectDecoder(
-								ClassResolvers.cacheDisabled(this.getClass().getClassLoader())),
-						Connection.this);
-			}
-		});
-
-		bootstrap.setOption("tcpnodelay", true);
-		bootstrap.setOption("keepAlive", true);
-
-		// Start the connection attempt.
-		Connection.logger.log(Level.FINE, "Connecting to: " + otherEndpoint);
-		ChannelFuture future = bootstrap.connect(otherEndpoint.getInetAddress());
-
-		// Wait until the connection attempt succeeds or fails.
-		future.addListener(new ChannelFutureListener() {
-			@Override
-			public void operationComplete(ChannelFuture future2) throws Exception {
-				Connection.this.channelConnectedCallback(future2);
-			}
-		});
-	}
-
 	void channelConnectedCallback(ChannelFuture future) {
+		shouldClose = false;
 		assert (channel == null);
 		if (future.getChannel() != null)
 			connectionManager.addChannel(future.getChannel());
-		if (future.isSuccess())
+		if (future.isSuccess()) {
+			Connection.logger.log(Level.FINE, "successfully connected");
 			synchronized (this) {
 				channel = future.getChannel();
 
 				if (closed)
-					cleanup();
+					cleanDie();
 				else {
 					sendMessage(new EndpointInfo(connectionManager.getSelfEndpoint()));
+					Connection.logger.log(Level.FINE, "sent endpoint info");
 
 					while (outgoing.size() > 0)
 						channel.write(outgoing.poll());
 				}
 			}
-		else {
-			future.getCause().printStackTrace();
-			connectionManager.deliverEvent(otherEndpoint, new DeathNotification(future.getCause()));
-			connectionManager.removeConnection(this);
+		} else {
+			Connection.logger.log(Level.FINE, "unsuccessful connection");
+			die(future.getCause());
 		}
 	}
 
@@ -123,12 +87,18 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	 * @param message
 	 */
 	public void sendMessage(Object message) {
-		clean();
+		shouldClose = false;
 		synchronized (this) {
 			if (channel == null)
 				outgoing.add(message);
 			else
-				channel.write(message);
+				try {
+					Connection.logger.log(Level.FINEST, "writing to channel");
+					channel.write(message);
+					Connection.logger.log(Level.FINEST, "wrote to channel");
+				} catch (Throwable e) {
+					Connection.logger.log(Level.SEVERE, "caught exception: " + e);
+				}
 		}
 	}
 
@@ -138,14 +108,14 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	@Override
 	public void messageReceived(
 			ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-		incomingMessage(channel, e, otherEndpoint);
+		shouldClose = false;
+		incomingMessage(channel, e);
 	}
 
-	public void incomingMessage(Channel c, MessageEvent e, Endpoint source) {
-		clean();
+	public void incomingMessage(Channel c, MessageEvent e) {
 		assert (((c == channel) && (incomingChannel == null)) || (c == incomingChannel
 				.getChannel()));
-		connectionManager.deliverEvent(source, e.getMessage());
+		connectionManager.deliverEvent(otherEndpoint, e.getMessage());
 	}
 
 	@Override
@@ -155,28 +125,50 @@ public class Connection extends SimpleChannelUpstreamHandler {
 		super.handleUpstream(ctx, e);
 	}
 
-	public void close() {
-		cleanup();
-	}
-
 	@Override
 	public void channelClosed(
 			ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-		connectionManager.removeConnection(this);
+		die(new TransportException("Channel was closed"));
 	}
 
 	@Override
 	public void exceptionCaught(
 			ChannelHandlerContext ctx, ExceptionEvent e) {
-		Connection.logger.log(
-				Level.WARNING,
+		Connection.logger.log(Level.WARNING,
 				"Unexpected exception from downstream.",
 				e.getCause());
-		connectionManager.deliverEvent(otherEndpoint, new DeathNotification(e.getCause()));
+		die(e.getCause());
+	}
+
+	public Endpoint getOtherEndpoint() {
+		return otherEndpoint;
+	}
+
+	public void addIncomingChannel(IncomingChannelHandler incomingChannel) {
+		if (this.incomingChannel != null) ConnectionManager
+				.die(this.getClass().getName()
+						+ "trying to close different incoming channel handler for connection!");
+		synchronized (this) {
+			this.incomingChannel = incomingChannel;
+		}
+	}
+
+	/**
+	 * This method kills this connection, cleans it and removes it from
+	 * ConnectionManager
+	 */
+	public void die(Throwable t) {
+		cleanAndClose();
+		connectionManager.removeConnection(this);
+		connectionManager.deliverEvent(otherEndpoint, new DeathNotification(t));
+	}
+
+	private void cleanDie() {
+		cleanAndClose();
 		connectionManager.removeConnection(this);
 	}
 
-	private void cleanup() {
+	public void cleanAndClose() {
 		synchronized (this) {
 			boolean hadChannel = false;
 			if (channel != null) {
@@ -193,42 +185,38 @@ public class Connection extends SimpleChannelUpstreamHandler {
 				Connection.logger.log(Level.FINER, "Closed incoming channel");
 			}
 			outgoing.clear();
-			if (bootstrap != null) {
-				Connection.logger.log(Level.FINE, "Releasing external resources");
-				bootstrap.releaseExternalResources();
-				Connection.logger.log(Level.FINE, "Released external resources");
-			} else if (!hadIncommingChannel)
-				Connection.logger.log(Level.SEVERE, "had no bootstrap not incoming channel!");
 			closed = true;
 		}
 	}
 
-	public boolean isDirty() {
-		return dirty;
-	}
-
-	public void setDirty() {
-		dirty = true;
-	}
-
-	public void clean() {
-		dirty = false;
-	}
-
-	public Endpoint getOtherEndpoint() {
-		return otherEndpoint;
-	}
-
-	public void addIncomingChannel(IncomingChannelHandler incomingChannel) {
-		if (this.incomingChannel != null) throw new RuntimeException("OOPS, SHOULD NEVER HAPPEN");
-		clean();
+	public void closeIncoming(IncomingChannelHandler incomingChannelHandler) {
 		synchronized (this) {
-			this.incomingChannel = incomingChannel;
+			if (incomingChannel != incomingChannelHandler)
+				ConnectionManager
+						.die(this.getClass().getName()
+								+ "trying to close different incoming channel handler for connection!");
+			if (incomingChannel.getChannel() == channel) cleanDie();
 		}
 	}
 
 	@Override
 	public String toString() {
 		return "Conn:" + otherEndpoint + (incomingChannel != null ? "/in" : "/out");
+	}
+
+	public void checkAlive() {
+		synchronized (this) {
+			if (shouldClose) {
+				; // no contacts for some time
+				if (incomingChannel.getChannel() == channel) {
+					// don't close, it's the other endpoint's responsibility
+				} else {
+					channel.close();
+					if (incomingChannel != null)
+						channel = incomingChannel.getChannel();
+				}
+			}
+		}
+		shouldClose = true;
 	}
 }

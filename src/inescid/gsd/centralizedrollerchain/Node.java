@@ -9,7 +9,10 @@ import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.transport.interfaces.EventReceiver;
 
+import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -20,6 +23,24 @@ public abstract class Node implements EventReceiver, Runnable {
 	// This node's endpoint
 	protected final Endpoint endpoint;
 
+	protected final ScheduledExecutorService executor;
+
+	class MyThreadFactory implements ThreadFactory {
+		private final String threadPre;
+		private final ThreadFactory realFactory = Executors.defaultThreadFactory();
+
+		public MyThreadFactory(String string) {
+			threadPre = string;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread temp = realFactory.newThread(r);
+			temp.setName(threadPre + temp.getName());
+			return temp;
+		}
+	}
+
 	// Queue for the objects received from TCP
 	private final PriorityBlockingQueue<PriorityPair<Endpoint, Object>> queue = new PriorityBlockingQueue<PriorityPair<Endpoint, Object>>();
 
@@ -28,19 +49,12 @@ public abstract class Node implements EventReceiver, Runnable {
 	public Node(Endpoint endpoint) {
 		this.endpoint = endpoint;
 		connectionManager = new ConnectionManager(this, endpoint);
+		// initialize the single thread of this node
+		executor = Executors.newScheduledThreadPool(1, new MyThreadFactory("NodeThreadPool_"));
+		Node.logger.log(Level.INFO, "Created new Node");
 	}
 
 	public void run() {
-		while (true)
-			try {
-				PriorityPair<Endpoint, Object> res = queue.take();
-				if (res.getSnd() instanceof DieNow)
-					break;
-				processEventInternal(res.getFst(), res.getSnd());
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-				System.exit(-1);
-			}
 	}
 
 	protected abstract void processEventInternal(Endpoint fst, Object snd);
@@ -57,12 +71,37 @@ public abstract class Node implements EventReceiver, Runnable {
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
 		Node.logger.log(Level.FINEST, "Queued event from: " + source + " / " + message);
+		executor.submit(new Runnable() {
+			@Override
+			public void run() {
+				takeFromQueue();
+			}
+		});
+	}
+
+	private void takeFromQueue() {
+		PriorityPair<Endpoint, Object> el = null;
+		if (queue.size() == 0) {
+			Node.logger.log(Level.SEVERE, "queue was empty. Quitting");
+			System.exit(-1);
+		}
+		try {
+			el = queue.take();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			Node.logger.log(Level.SEVERE, "error while taking from the queue. Quitting");
+			System.exit(-1);
+		}
+		processEventInternal(el.getFst(), el.getSnd());
 	}
 
 	protected void sendMessage(Endpoint endpoint, Event message) {
 		Node.logger.log(Level.FINE, this.endpoint + " S: " + endpoint + " / " + message);
 		Connection temp = connectionManager.getConnection(endpoint);
+		Node.logger.log(Level.FINEST, "got connection to send message: " + endpoint + " / "
+				+ message);
 		temp.sendMessage(message);
+		Node.logger.log(Level.FINEST, "sent message: " + endpoint + " / " + message);
 	}
 
 	public void die() {
