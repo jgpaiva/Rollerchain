@@ -3,7 +3,7 @@ package inescid.gsd.centralizedrollerchain.test;
 import inescid.gsd.centralizedrollerchain.MasterNode;
 import inescid.gsd.centralizedrollerchain.Node;
 import inescid.gsd.centralizedrollerchain.WorkerNode;
-import inescid.gsd.centralizedrollerchain.internalevents.DieEvent;
+import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
 import inescid.gsd.transport.Endpoint;
 
 import java.util.ArrayList;
@@ -22,8 +22,6 @@ public class LocalTestWithFails {
 		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
 		final MasterNode masterNode = new MasterNode(masterEndpoint);
-		Thread masterNodeThread = new Thread(masterNode);
-		masterNodeThread.start();
 		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
 		LocalTestWithFails.setHandlerLevel();
 
@@ -40,14 +38,6 @@ public class LocalTestWithFails {
 
 		logger.log(Level.INFO, "Created all worker nodes");
 
-		ArrayList<Thread> threads = new ArrayList<Thread>();
-		for (WorkerNode it : workers)
-			threads.add(new Thread(it));
-		for (Thread it : threads)
-			it.start();
-
-		System.out.println("Started all Threads");
-
 		try {
 			Thread.sleep(10000);
 		} catch (InterruptedException e1) {
@@ -58,7 +48,7 @@ public class LocalTestWithFails {
 		Random r = new Random();
 		for (WorkerNode it : workers)
 			if (r.nextDouble() < 0.3) {
-				it.processEvent(it.getEndpoint(), new DieEvent());
+				it.processEvent(it.getEndpoint(), new KillEvent());
 				deadNodes++;
 			}
 		System.out.println("Started deaths");
@@ -76,22 +66,8 @@ public class LocalTestWithFails {
 		for (int it = 0; it < deadNodes; it++)
 			newWorkers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1
 					+ LocalTestWithFails.MAX_WORKERS + it), masterEndpoint));
-		for (WorkerNode it : newWorkers)
-			new Thread(it).start();
 
 		System.out.println("Started replacements");
-
-		for (Thread it : threads)
-			try {
-				it.join();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-		try {
-			masterNodeThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
 	}
 
 	private static void setHandlerLevel() {

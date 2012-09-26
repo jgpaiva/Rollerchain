@@ -6,6 +6,11 @@ public class Configuration {
 	private static final int MAX_REPLICATION = 8;
 	private static final long KEEP_ALIVE_INTERVAL = 30;
 	private static final int MIN_REPLICATION = 4;
+	private static final int N_KEYS = 10000;
+	private static final int RANDOM_SEED = 123456;
+	private static final int MIN_KEY_SIZE = 1024;
+	private static final int MAX_KEY_SIZE = 2024;
+	private static final int ID_SIZE = 128;
 
 	public static int getMaxReplication() {
 		return Configuration.MAX_REPLICATION;
@@ -17,5 +22,25 @@ public class Configuration {
 
 	public static int getMinReplication() {
 		return Configuration.MIN_REPLICATION;
+	}
+
+	public static int getNKeys() {
+		return Configuration.N_KEYS;
+	}
+
+	public static int getRandomSeed() {
+		return Configuration.RANDOM_SEED;
+	}
+
+	public static int getMinKeySize() {
+		return Configuration.MIN_KEY_SIZE;
+	}
+
+	public static int getMaxKeySize() {
+		return Configuration.MAX_KEY_SIZE;
+	}
+
+	public static int getIDSize() {
+		return Configuration.ID_SIZE;
 	}
 }

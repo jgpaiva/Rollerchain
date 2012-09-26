@@ -1,15 +1,19 @@
 package inescid.gsd.centralizedrollerchain;
 
 import inescid.gsd.centralizedrollerchain.events.Divide;
+import inescid.gsd.centralizedrollerchain.events.DivideIDUpdate;
+import inescid.gsd.centralizedrollerchain.events.GroupUpdate;
+import inescid.gsd.centralizedrollerchain.events.JoinedNetwork;
 import inescid.gsd.centralizedrollerchain.events.KeepAlive;
 import inescid.gsd.centralizedrollerchain.events.Merge;
+import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
-import inescid.gsd.centralizedrollerchain.internalevents.DieEvent;
+import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
+import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.interfaces.EventReceiver;
 
-import java.util.Set;
 import java.util.logging.Level;
 
 public class WorkerNode extends Node {
@@ -45,42 +49,58 @@ public class WorkerNode extends Node {
 			processDivide(source, (Divide) message);
 		else if (message instanceof Merge)
 			processMerge(source, (Merge) message);
-		else if (message instanceof DieEvent)
-			processDieEvent(source, (DieEvent) message);
+		else if (message instanceof KillEvent)
+			processKillEvent(source, (KillEvent) message);
 		else if (message instanceof KeepAlive)
 			; // drop
+		else if (message instanceof UpperLayerMessage)
+			upperLayer.processEvent(source, message);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
 	}
 
 	@Override
-	public void run() {
+	public void init() {
 		sendMessage(masterEndpoint, new WorkerInit());
-		super.run();
 	}
 
 	private void processSetNeighbours(Endpoint source, SetNeighbours setNeighbours) {
+		StaticGroup oldGroup = s.getGroup();
 		s.setGroup(setNeighbours.getGroup());
 		s.setSuccessorGroup(setNeighbours.getSuccessorGroup());
 		s.setPredecessorGroup(setNeighbours.getPredecessorGroup());
 
-		upperLayer.processEvent(source, setNeighbours);
+		if (s.getGroup() == null)
+			upperLayer.processEvent(source,
+					new JoinedNetwork(setNeighbours.getGroup(), s.getPredecessorId()));
+		else {
+			if (!s.getGroup().getID().equals(setNeighbours.getGroup().getID()))
+				Node.die("Should never happen");
+
+			upperLayer.processEvent(source,
+					new GroupUpdate(oldGroup, setNeighbours.getGroup(), s.getPredecessorId()));
+		}
 	}
 
 	private void processDivide(Endpoint source, Divide message) {
+		StaticGroup oldGroup = s.getGroup();
 		if (message.getNewGroup().contains(endpoint)) {
+			s.setGroup(message.getNewGroup());
 			s.setPredecessorGroup(message.getOldGroup());
 			if (s.getSuccessorGroup() == null)
 				s.setSuccessorGroup(message.getOldGroup());
 		} else {
+			s.setGroup(message.getOldGroup());
 			s.setSuccessorGroup(message.getNewGroup());
 			if (s.getPredecessorGroup() == null)
 				s.setPredecessorGroup(message.getNewGroup());
 		}
-		upperLayer.processEvent(source, message);
+		upperLayer.processEvent(source,
+				new DivideIDUpdate(oldGroup, s.getGroup(), s.getPredecessorGroup()));
 	}
 
 	private void processMerge(Endpoint source, Merge message) {
+		StaticGroup oldGroup = s.getGroup();
 		if (message.getSmallGroup().contains(endpoint)) {
 			s.setSuccessorGroup(message.getSuccessorGroup());
 			if (s.getSuccessorGroup() == null)
@@ -91,41 +111,49 @@ public class WorkerNode extends Node {
 			if (s.getPredecessorGroup() == null)
 				s.setSuccessorGroup(null);
 		}
-
-		upperLayer.processEvent(source, message);
+		upperLayer.processEvent(source,
+				new MergeIDUpdate(oldGroup, s.getGroup(), s.getPredecessorGroup()));
 	}
 
-	private void processDieEvent(Endpoint source, DieEvent message) {
-		super.die();
+	private void processKillEvent(Endpoint source, KillEvent message) {
+		super.kill();
 	}
 }
 
 class WorkerNodeInternalState {
-	private Set<Endpoint> group;
-	private Set<Endpoint> successorGroup;
-	private Set<Endpoint> predecessorGroup;
+	private StaticGroup group;
+	private StaticGroup successorGroup;
+	private StaticGroup predecessorGroup;
 
-	public Set<Endpoint> getGroup() {
+	public StaticGroup getGroup() {
 		return group;
 	}
 
-	public void setGroup(Set<Endpoint> group) {
+	public void setGroup(StaticGroup group) {
 		this.group = group;
 	}
 
-	public Set<Endpoint> getSuccessorGroup() {
+	public StaticGroup getSuccessorGroup() {
 		return successorGroup;
 	}
 
-	public void setSuccessorGroup(Set<Endpoint> successorGroup) {
+	public void setSuccessorGroup(StaticGroup successorGroup) {
 		this.successorGroup = successorGroup;
 	}
 
-	public Set<Endpoint> getPredecessorGroup() {
+	public StaticGroup getPredecessorGroup() {
 		return predecessorGroup;
 	}
 
-	public void setPredecessorGroup(Set<Endpoint> predecessorGroup) {
+	public Identifier getPredecessorId() {
+		return predecessorGroup != null ? predecessorGroup.getID() : null;
+	}
+
+	public Identifier getSuccessorId() {
+		return successorGroup != null ? successorGroup.getID() : null;
+	}
+
+	public void setPredecessorGroup(StaticGroup predecessorGroup) {
 		this.predecessorGroup = predecessorGroup;
 	}
 }

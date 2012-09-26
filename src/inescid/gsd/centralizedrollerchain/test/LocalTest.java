@@ -20,8 +20,6 @@ public class LocalTest {
 		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
 		final MasterNode masterNode = new MasterNode(masterEndpoint);
-		Thread masterNodeThread = new Thread(masterNode);
-		masterNodeThread.start();
 		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
 		LocalTest.setHandlerLevel();
 
@@ -37,26 +35,6 @@ public class LocalTest {
 			workers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1 + it), masterEndpoint));
 
 		logger.log(Level.INFO, "Created all worker nodes");
-
-		ArrayList<Thread> threads = new ArrayList<Thread>();
-		for (WorkerNode it : workers)
-			threads.add(new Thread(it));
-		for (Thread it : threads)
-			it.start();
-
-		logger.log(Level.INFO, "Started all Threads");
-
-		for (Thread it : threads)
-			try {
-				it.join();
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-		try {
-			masterNodeThread.join();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
 	}
 
 	private static void setHandlerLevel() {

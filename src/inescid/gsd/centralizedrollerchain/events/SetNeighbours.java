@@ -1,33 +1,31 @@
 package inescid.gsd.centralizedrollerchain.events;
 
+import inescid.gsd.centralizedrollerchain.StaticGroup;
 import inescid.gsd.centralizedrollerchain.interfaces.Event;
-import inescid.gsd.transport.Endpoint;
-
-import java.util.Set;
 
 public class SetNeighbours extends Event {
 	private static final long serialVersionUID = 1851878886720999187L;
 
-	private final Set<Endpoint> group;
-	private final Set<Endpoint> predGroup;
-	private final Set<Endpoint> succGroup;
+	private final StaticGroup group;
+	private final StaticGroup predGroup;
+	private final StaticGroup succGroup;
 
-	public SetNeighbours(Set<Endpoint> group, Set<Endpoint> predGroup,
-			Set<Endpoint> succGroup) {
+	public SetNeighbours(StaticGroup group, StaticGroup predGroup,
+			StaticGroup succGroup) {
 		this.group = group;
 		this.predGroup = predGroup;
 		this.succGroup = succGroup;
 	}
 
-	public Set<Endpoint> getGroup() {
+	public StaticGroup getGroup() {
 		return group;
 	}
 
-	public Set<Endpoint> getSuccessorGroup() {
+	public StaticGroup getSuccessorGroup() {
 		return succGroup;
 	}
 
-	public Set<Endpoint> getPredecessorGroup() {
+	public StaticGroup getPredecessorGroup() {
 		return predGroup;
 	}
 

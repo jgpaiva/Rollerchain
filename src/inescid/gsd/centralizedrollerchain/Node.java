@@ -2,6 +2,8 @@ package inescid.gsd.centralizedrollerchain;
 
 import inescid.gsd.centralizedrollerchain.interfaces.Event;
 import inescid.gsd.centralizedrollerchain.interfaces.InternalEvent;
+import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
+import inescid.gsd.centralizedrollerchain.utils.NamedThreadFactory;
 import inescid.gsd.centralizedrollerchain.utils.PriorityPair;
 import inescid.gsd.transport.Connection;
 import inescid.gsd.transport.ConnectionManager;
@@ -12,11 +14,10 @@ import inescid.gsd.transport.interfaces.EventReceiver;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public abstract class Node implements EventReceiver, Runnable {
+public abstract class Node implements EventReceiver {
 	// Transport layer
 	protected final ConnectionManager connectionManager;
 
@@ -25,37 +26,30 @@ public abstract class Node implements EventReceiver, Runnable {
 
 	protected final ScheduledExecutorService executor;
 
-	class MyThreadFactory implements ThreadFactory {
-		private final String threadPre;
-		private final ThreadFactory realFactory = Executors.defaultThreadFactory();
-
-		public MyThreadFactory(String string) {
-			threadPre = string;
-		}
-
-		@Override
-		public Thread newThread(Runnable r) {
-			Thread temp = realFactory.newThread(r);
-			temp.setName(threadPre + temp.getName());
-			return temp;
-		}
-	}
-
 	// Queue for the objects received from TCP
 	private final PriorityBlockingQueue<PriorityPair<Endpoint, Object>> queue = new PriorityBlockingQueue<PriorityPair<Endpoint, Object>>();
 
-	public static final Logger logger = Logger.getLogger(Node.class.getName());
+	static final Logger logger = Logger.getLogger(Node.class.getName());
 
 	public Node(Endpoint endpoint) {
 		this.endpoint = endpoint;
 		connectionManager = new ConnectionManager(this, endpoint);
 		// initialize the single thread of this node
-		executor = Executors.newScheduledThreadPool(1, new MyThreadFactory("NodeThreadPool_"));
+		executor = Executors.newScheduledThreadPool(1, new NamedThreadFactory("NodeThreadPool_"));
 		Node.logger.log(Level.INFO, "Created new Node");
+		executor.submit(new Runnable() {
+			@Override
+			public void run() {
+				init();
+			}
+		});
 	}
 
-	public void run() {
-	}
+	/**
+	 * Method used to initialize the node. If it needs to do something when
+	 * booted, this is where it should be done.
+	 */
+	public abstract void init();
 
 	protected abstract void processEventInternal(Endpoint fst, Object snd);
 
@@ -63,6 +57,8 @@ public abstract class Node implements EventReceiver, Runnable {
 	public void processEvent(Endpoint source, Object message) {
 		Node.logger.log(Level.FINEST, "Queuing event from: " + source + " / " + message);
 		if (message instanceof Event)
+			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
+		else if (message instanceof UpperLayerMessage)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
 		else if (message instanceof DeathNotification)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 1));
@@ -95,25 +91,30 @@ public abstract class Node implements EventReceiver, Runnable {
 		processEventInternal(el.getFst(), el.getSnd());
 	}
 
-	protected void sendMessage(Endpoint endpoint, Event message) {
-		Node.logger.log(Level.FINE, this.endpoint + " S: " + endpoint + " / " + message);
-		Connection temp = connectionManager.getConnection(endpoint);
-		Node.logger.log(Level.FINEST, "got connection to send message: " + endpoint + " / "
+	public void sendMessage(Endpoint dest, Event message) {
+		Node.logger.log(Level.FINE, endpoint + " S: " + dest + " / " + message);
+		Connection temp = connectionManager.getConnection(dest);
+		Node.logger.log(Level.FINEST, "got connection to send message: " + dest + " / "
 				+ message);
 		temp.sendMessage(message);
-		Node.logger.log(Level.FINEST, "sent message: " + endpoint + " / " + message);
+		Node.logger.log(Level.FINEST, "sent message: " + dest + " / " + message);
 	}
 
-	public void die() {
+	public void kill() {
 		connectionManager.shutdown();
 		queue.clear();
-		queue.add(new PriorityPair<Endpoint, Object>(endpoint, new DieNow(), 4));
+		executor.shutdownNow();
+	}
+
+	public static void die(String string) {
+		Thread.dumpStack();
+		System.out.println("SEVERE ERROR: " + string);
+		System.err.println("SEVERE ERROR: " + string);
+		Node.logger.log(Level.SEVERE, string);
+		System.exit(-29);
 	}
 
 	public Endpoint getEndpoint() {
 		return endpoint;
 	}
-}
-
-class DieNow extends Event {
 }

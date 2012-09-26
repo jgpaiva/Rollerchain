@@ -51,14 +51,11 @@ public class DistributedTest {
 		if (masterEndpoint.equals(myEndpoint)) {
 			myNode = new MasterNode(myEndpoint); // is master
 			logger.log(Level.INFO, "Now starting server");
-			myNode.run();
 		} else {
 			DistributedTest.sleep(2000);
 			myNode = new WorkerNode(myEndpoint, masterEndpoint); // is worker
 
 			System.out.println("Starting Node");
-			Thread thread = new Thread(myNode);
-			thread.start();
 
 			Random r = new Random();
 			DistributedTest.sleep(60 * 1000);
