@@ -1,5 +1,6 @@
 package inescid.gsd.centralizedrollerchain;
 
+import inescid.gsd.centralizedrollerchain.application.keyvalue.Key;
 import inescid.gsd.centralizedrollerchain.events.Divide;
 import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
@@ -25,6 +26,7 @@ public class Group {
 	private ScheduledFuture<?> schedule;
 	private final boolean active;
 	private final MasterNode owner;
+	public TreeSet<Key> keys;
 
 	Group(MasterNode owner,Identifier id,  TreeSet<Endpoint> members) {
 		active = true;
@@ -131,15 +133,6 @@ public class Group {
 	public void removeNode(Endpoint source) {
 		if (!finger.remove(source))
 			Group.logger.log(Level.SEVERE, "Endpoint " + source + " was not in finger!" + this);
-	}
-
-	private void moveAllFrom(Group group, Group newGroup, TreeSet<Endpoint> toMove) {
-		for (Endpoint it : toMove) {
-			Group res = s.addToWorkerList(it, newGroup);
-			if (res != group)
-				Group.logger.log(Level.SEVERE, "Node was in wrong group! Should be in " + this
-						+ " but was in " + res);
-		}
 	}
 
 	private void sendMessage(Endpoint dest, Event Message) {

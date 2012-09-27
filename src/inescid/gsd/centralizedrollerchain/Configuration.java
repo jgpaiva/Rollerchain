@@ -11,6 +11,9 @@ public class Configuration {
 	private static final int MIN_KEY_SIZE = 1024;
 	private static final int MAX_KEY_SIZE = 2024;
 	private static final int ID_SIZE = 128;
+	private static final long ROUND_TIME = 10;
+	private static final int ROUNDS_TO_KEEP_MESSAGES = 10;
+	private static final int ROUNDS_TO_KEEP_KEYS = 10;
 
 	public static int getMaxReplication() {
 		return Configuration.MAX_REPLICATION;
@@ -42,5 +45,17 @@ public class Configuration {
 
 	public static int getIDSize() {
 		return Configuration.ID_SIZE;
+	}
+
+	public static long getRoundTime() {
+		return Configuration.ROUND_TIME;
+	}
+
+	public static int getRoundsToKeepMessages() {
+		return Configuration.ROUNDS_TO_KEEP_MESSAGES;
+	}
+
+	public static int getRoundsToKeepKeys() {
+		return Configuration.ROUNDS_TO_KEEP_KEYS;
 	}
 }

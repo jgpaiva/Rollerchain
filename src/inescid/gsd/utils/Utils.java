@@ -24,21 +24,42 @@ public class Utils {
 	public static final <T> T getRandomEl(Collection<T> col) {
 		int randomNumber = Utils.R.nextInt(col.size());
 		Iterator<T> it = col.iterator();
-		for (int i = 0; i < randomNumber; i++) {
+		for (int i = 0; i < randomNumber; i++)
 			it.next();
-		}
 		T toReturn = it.next();
+		return toReturn;
+	}
+
+	public static final <T> T getRandomEl(Collection<T> col, T toIgnore) {
+		if ((col.size() == 1) && col.contains(toIgnore))
+			throw new IndexOutOfBoundsException("this should never happen!");
+
+		boolean removed = false;
+		if (col.contains(toIgnore)) {
+			col.remove(toIgnore);
+			removed = true;
+		}
+
+		int randomNumber = Utils.R.nextInt(col.size());
+		Iterator<T> it = col.iterator();
+		for (int i = 0; i < randomNumber; i++)
+			it.next();
+		T toReturn = it.next();
+
+		if (removed)
+			col.add(toReturn);
+
 		return toReturn;
 	}
 
 	public static final <T> T removeRandomEl(Collection<T> col) {
 		int randomNumber = Utils.R.nextInt(col.size());
 		Iterator<T> it = col.iterator();
-		for (int i = 0; i < randomNumber; i++) {
+		for (int i = 0; i < randomNumber; i++)
 			it.next();
-		}
 		T toReturn = it.next();
 		it.remove();
 		return toReturn;
 	}
+
 }

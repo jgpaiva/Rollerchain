@@ -1,14 +1,20 @@
 package inescid.gsd.centralizedrollerchain;
 
-import inescid.gsd.centralizedrollerchain.events.KeepAlive;
+import inescid.gsd.centralizedrollerchain.application.keyvalue.GetInfoReply;
+import inescid.gsd.centralizedrollerchain.application.keyvalue.Key;
+import inescid.gsd.centralizedrollerchain.events.GetInfo;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
 
+import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -18,8 +24,6 @@ import java.util.logging.Level;
 
 public class MasterNode extends Node {
 	private final MasterNodeInternalState s = new MasterNodeInternalState();
-
-	private static final HashSet<Group> allGroups = new HashSet<Group>();
 
 	private static final int MAX_REPLICATION = Configuration.getMaxReplication();
 	private static final int MIN_REPLICATION = Configuration.getMinReplication();
@@ -37,10 +41,12 @@ public class MasterNode extends Node {
 			processWorkerInit(source, (WorkerInit) object);
 		else if (object instanceof DeathNotification)
 			processDeathNotification(source, (DeathNotification) object);
+		else if (object instanceof GetInfoReply)
+			processGetInfoReply(source, (GetInfoReply) object);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + object);
-		Node.logger.log(Level.FINER, "active nodes:" + s.workerList.size() + "     list: "
-				+ s.workerList);
+		Node.logger.log(Level.FINER, "active nodes:" + s.getWorkerList().size() + "     list: "
+				+ s.getWorkerList());
 	}
 
 	@Override
@@ -50,7 +56,7 @@ public class MasterNode extends Node {
 
 	private void processWorkerInit(Endpoint source, WorkerInit e) {
 		Group toJoin = null;
-		if (MasterNode.allGroups.size() == 0)
+		if (s.getAllGroupsSize() == 0)
 			toJoin = createSeedGroup(source);
 		else {
 			toJoin = getGroupToJoin();
@@ -61,7 +67,42 @@ public class MasterNode extends Node {
 			Node.logger.log(Level.SEVERE, "worker set contains " + source
 					+ " associated with group: " + toJoin);
 
-		if (toJoin.size() > MasterNode.MAX_REPLICATION) toJoin.divide();
+		if (toJoin.size() > MasterNode.MAX_REPLICATION)
+			toJoin.divide(MasterNode.calculateMiddlePoint(toJoin.getID(), toJoin.getPredecessor()
+					.getID(), toJoin.size(), toJoin.keys));
+	}
+
+	// FIXME: divide will fail on the first group
+	// FIXME: group.keys must not be public!
+	// FIXME: update group selection to conform with this division
+
+	private static BigInteger calculateMiddlePoint(Identifier ID, Identifier predID, int groupSize,
+			TreeSet<Key> keys) {
+		int size = keys.size();
+		int smallGroupSize = groupSize / 2;
+		int middle = (size * groupSize) / smallGroupSize;
+		if (middle == 0)
+			return null;
+
+		NavigableSet<Key> currentSet = keys.headSet(new Key(ID, 0), false);
+
+		int counter = 0;
+		for (Iterator<Key> it = currentSet.descendingIterator(); it.hasNext();) {
+			counter++;
+			Identifier value = it.next().getID();
+			if (counter >= middle)
+				return value;
+		}
+
+		currentSet = keys.tailSet(new Key(ID, 0), true);
+		for (Iterator<Key> it = currentSet.descendingIterator(); it.hasNext();) {
+			counter++;
+			BigInteger value = it.next().getID();
+			if (counter >= middle)
+				return value;
+		}
+
+		throw new RuntimeException("Unreacheable code!");
 	}
 
 	private void processDeathNotification(Endpoint source, DeathNotification object) {
@@ -84,7 +125,7 @@ public class MasterNode extends Node {
 		double maxLoad = 0;
 		Group toReturn = null;
 
-		for (Group it : MasterNode.allGroups) {
+		for (Group it : s.getAllGroups()) {
 			double load =
 					// ((double) it.keys())
 					1D / it.size();
@@ -93,21 +134,20 @@ public class MasterNode extends Node {
 				toReturn = it;
 			}
 		}
-		assert (toReturn != null) : MasterNode.allGroups;
 		return toReturn;
 	}
 
 	private Group createSeedGroup(Endpoint node) {
 		TreeSet<Endpoint> set = new TreeSet<Endpoint>();
 		set.add(node);
-		Group toReturn = createGroup(set);
+		Group toReturn = createGroup(new Identifier(BigInteger.ZERO), set);
 		sendMessage(node, new SetNeighbours(toReturn.getStaticGroup(), null, null));
 		return toReturn;
 	}
 
 	private Group createGroup(Identifier id, TreeSet<Endpoint> setNew) {
 		Group toReturn = new Group(this, id, setNew);
-		MasterNode.allGroups.add(toReturn);
+		s.addToAllGroups(toReturn);
 		ScheduledFuture<?> schedule = executor.scheduleAtFixedRate(new CheckGroupConnections(
 				toReturn), MasterNode.KEEP_ALIVE_INTERVAL,
 				MasterNode.KEEP_ALIVE_INTERVAL, TimeUnit.SECONDS);
@@ -131,14 +171,20 @@ public class MasterNode extends Node {
 	private void checkGroupConnections(Group group) {
 		Node.logger.log(Level.FINE, "checking connections");
 		for (Endpoint it : group.getFinger())
-			sendMessage(it, new KeepAlive());
+			sendMessage(it, new GetInfo());
 		Node.logger.log(Level.FINE, "checked connections");
+	}
+
+	private void processGetInfoReply(Endpoint source, GetInfoReply object) {
+		Group group = s.getWorkerList().get(source);
+		group.keys = new TreeSet<Key>();
+		group.keys.addAll(Arrays.asList(object.getKeys()));
 	}
 
 	public void checkIntegrity() {
 		System.out.println("Checking Integrity");
 		Set<Endpoint> allNodes = new TreeSet<Endpoint>();
-		for (Group it : MasterNode.allGroups)
+		for (Group it : s.getAllGroups())
 			for (Endpoint it2 : it.getFinger()) {
 				if (!allNodes.add(it2))
 					System.out.println("ERROR: Node " + it2 + " was in group " + it
@@ -154,20 +200,30 @@ public class MasterNode extends Node {
 		System.out.println("Done checking Integrity");
 	}
 
-	public static int getAllGroupsSize() {
-		return MasterNode.allGroups.size();
-	}
-
-	public static boolean removeFromAllGroups(Group group) {
-		return MasterNode.allGroups.remove(group); // TODO: test return
+	void moveAllFrom(Group group, Group newGroup, TreeSet<Endpoint> toMove) {
+		for (Endpoint it : toMove) {
+			Group res = s.addToWorkerList(it, newGroup);
+			if (res != group)
+				Node.logger.log(Level.SEVERE, "Node was in wrong group! Should be in " + this
+						+ " but was in " + res);
+		}
 	}
 }
 
 class MasterNodeInternalState {
-	Map<Endpoint, Group> workerList = new TreeMap<Endpoint, Group>();
+	private final Map<Endpoint, Group> workerList = new TreeMap<Endpoint, Group>();
+	private final HashSet<Group> allGroups = new HashSet<Group>();
 
 	public Group addToWorkerList(Endpoint e, Group g) {
 		return workerList.put(e, g);
+	}
+
+	public Map<Endpoint, Group> getWorkerList() {
+		return Collections.unmodifiableMap(workerList);
+	}
+
+	public Set<Group> getAllGroups() {
+		return Collections.unmodifiableSet(allGroups);
 	}
 
 	public Group removeWorkerFromList(Endpoint e) {
@@ -176,5 +232,17 @@ class MasterNodeInternalState {
 
 	public Map<Endpoint, Group> getWorkerSet() {
 		return Collections.unmodifiableMap(workerList);
+	}
+
+	public int getAllGroupsSize() {
+		return allGroups.size();
+	}
+
+	public boolean addToAllGroups(Group group) {
+		return allGroups.add(group); // TODO: test return
+	}
+
+	public boolean removeFromAllGroups(Group group) {
+		return allGroups.remove(group); // TODO: test return
 	}
 }

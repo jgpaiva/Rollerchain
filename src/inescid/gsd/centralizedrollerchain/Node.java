@@ -117,4 +117,8 @@ public abstract class Node implements EventReceiver {
 	public Endpoint getEndpoint() {
 		return endpoint;
 	}
+
+	public ScheduledExecutorService getExecutor() {
+		return executor;
+	}
 }

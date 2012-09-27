@@ -2,9 +2,9 @@ package inescid.gsd.centralizedrollerchain;
 
 import inescid.gsd.centralizedrollerchain.events.Divide;
 import inescid.gsd.centralizedrollerchain.events.DivideIDUpdate;
+import inescid.gsd.centralizedrollerchain.events.GetInfo;
 import inescid.gsd.centralizedrollerchain.events.GroupUpdate;
 import inescid.gsd.centralizedrollerchain.events.JoinedNetwork;
-import inescid.gsd.centralizedrollerchain.events.KeepAlive;
 import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
@@ -51,8 +51,8 @@ public class WorkerNode extends Node {
 			processMerge(source, (Merge) message);
 		else if (message instanceof KillEvent)
 			processKillEvent(source, (KillEvent) message);
-		else if (message instanceof KeepAlive)
-			; // drop
+		else if (message instanceof GetInfo)
+			processGetInfo(source, (GetInfo) message);
 		else if (message instanceof UpperLayerMessage)
 			upperLayer.processEvent(source, message);
 		else
@@ -72,13 +72,13 @@ public class WorkerNode extends Node {
 
 		if (s.getGroup() == null)
 			upperLayer.processEvent(source,
-					new JoinedNetwork(setNeighbours.getGroup(), s.getPredecessorId()));
+					new JoinedNetwork(setNeighbours.getGroup(), s.getPredecessorID()));
 		else {
 			if (!s.getGroup().getID().equals(setNeighbours.getGroup().getID()))
 				Node.die("Should never happen");
 
 			upperLayer.processEvent(source,
-					new GroupUpdate(oldGroup, setNeighbours.getGroup(), s.getPredecessorId()));
+					new GroupUpdate(oldGroup, setNeighbours.getGroup(), s.getPredecessorID()));
 		}
 	}
 
@@ -118,12 +118,25 @@ public class WorkerNode extends Node {
 	private void processKillEvent(Endpoint source, KillEvent message) {
 		super.kill();
 	}
+
+	private void processGetInfo(Endpoint source, GetInfo message) {
+		// I have no info to return
+		upperLayer.processEvent(source, message);
+	}
+
+	public StaticGroup getGroup() {
+		return s.getGroup();
+	}
+
+	public Identifier getPredecessorID() {
+		return s.getPredecessorID();
+	}
 }
 
 class WorkerNodeInternalState {
-	private StaticGroup group;
-	private StaticGroup successorGroup;
-	private StaticGroup predecessorGroup;
+	private StaticGroup group = null;
+	private StaticGroup successorGroup = null;
+	private StaticGroup predecessorGroup = null;
 
 	public StaticGroup getGroup() {
 		return group;
@@ -145,11 +158,11 @@ class WorkerNodeInternalState {
 		return predecessorGroup;
 	}
 
-	public Identifier getPredecessorId() {
+	public Identifier getPredecessorID() {
 		return predecessorGroup != null ? predecessorGroup.getID() : null;
 	}
 
-	public Identifier getSuccessorId() {
+	public Identifier getSuccessorID() {
 		return successorGroup != null ? successorGroup.getID() : null;
 	}
 

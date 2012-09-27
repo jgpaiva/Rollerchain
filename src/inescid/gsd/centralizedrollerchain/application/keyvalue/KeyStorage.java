@@ -2,15 +2,25 @@ package inescid.gsd.centralizedrollerchain.application.keyvalue;
 
 import inescid.gsd.centralizedrollerchain.Configuration;
 import inescid.gsd.centralizedrollerchain.Identifier;
+import inescid.gsd.centralizedrollerchain.StaticGroup;
 
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.NavigableSet;
 import java.util.Random;
 import java.util.TreeSet;
 
-public class KeyStorage {
-	private final TreeSet<Key> keys;
+public class KeyStorage implements Iterable<Key> {
+	private TreeSet<Key> keys;
 
 	public KeyStorage() {
 		keys = new TreeSet<Key>();
+	}
+
+	public KeyStorage(Key[] listing) {
+		keys = new TreeSet<Key>();
+		for (Key it : listing)
+			keys.add(it);
 	}
 
 	/**
@@ -30,25 +40,99 @@ public class KeyStorage {
 
 	@SuppressWarnings("unchecked")
 	public KeyContainer getKeys(Identifier lowerID, Identifier higherID) {
-		if ((lowerID == null) || (higherID == null))
-			return new KeyContainer((TreeSet<Key>) keys.clone());
+		TreeSet<Key> result = KeyStorage.filterInternal(lowerID, higherID, keys, false);
+		if (result == null)
+			return new KeyContainer(new TreeSet<Key>(keys));
+		else
+			return new KeyContainer(result);
+	}
 
-		TreeSet<Key> toReturn = null;
+	public TreeSet<Key> getInverse(Identifier lowerID, Identifier higherID) {
+		TreeSet<Key> result = KeyStorage.filterInternal(lowerID, higherID, keys, true);
+		if (result == null)
+			return new TreeSet<Key>();
+		else
+			return result;
+	}
+
+	/**
+	 * Filters a keySet by identifiers. Returns null if the keySet should not be
+	 * modified. Always returns NULL or a copy of the filtered object.
+	 * 
+	 * @param lowerID
+	 * @param higherID
+	 * @param keySet
+	 * @param reverse
+	 *            defines if it should use the interval or its oposite
+	 * @return NULL or a copy of the filtered object.
+	 */
+	private static TreeSet<Key> filterInternal(Identifier lowerID, Identifier higherID,
+			TreeSet<Key> keySet, boolean reverse) {
+		if ((lowerID == null) || (higherID == null))
+			return null;
 
 		Key higher = new Key(higherID, 0);
 		Key lower = new Key(lowerID, 0);
-		if (lower.compareTo(higher) <= 0)
-			toReturn = new TreeSet<Key>(keys.subSet(lower, false, higher,
-					true));
-		else {
-			TreeSet<Key> temp = new TreeSet<Key>(keys.tailSet(lower, false));
-			temp.addAll(keys.headSet(higher, true));
-			toReturn = temp;
+		if (reverse != (lower.compareTo(higher) <= 0)) {
+			NavigableSet<Key> temp = keySet.subSet(lower, false, higher, true);
+			if (temp.size() == keySet.size())
+				return null;
+			else
+				return new TreeSet<Key>(temp);
+		} else {
+			NavigableSet<Key> part1 = keySet.tailSet(lower, false);
+			NavigableSet<Key> part2 = keySet.headSet(higher, true);
+			if ((part1.size() + part2.size()) == keySet.size())
+				return null;
+			else {
+				TreeSet<Key> temp = new TreeSet<Key>(part1);
+				temp.addAll(part2);
+				return temp;
+			}
 		}
-		return new KeyContainer(toReturn);
 	}
 
 	public void addAll(KeyContainer container) {
 		keys.addAll(container.getKeys());
+	}
+
+	public KeyListing getKeyListing() {
+		return new KeyListing(keys);
+	}
+
+	public void removeAll(TreeSet<Key> keysInRequest) {
+		keys.removeAll(keysInRequest);
+	}
+
+	public int size() {
+		return keys.size();
+	}
+
+	public void removeAll(KeyStorage keys2) {
+		keys.removeAll(keys2.keys);
+	}
+
+	public void filter(StaticGroup group, Identifier predecessorID) {
+		TreeSet<Key> result = KeyStorage.filterInternal(predecessorID, group.getID(), keys, false);
+		if (result == null)
+			return;
+		keys = result;
+	}
+
+	public void clear() {
+		keys.clear();
+	}
+
+	@Override
+	public Iterator<Key> iterator() {
+		return keys.iterator();
+	}
+
+	public void removeAll(Collection<Key> toRemove) {
+		keys.removeAll(toRemove);
+	}
+
+	public void retainAll(Collection<Key> toRetain) {
+		keys.retainAll(toRetain);
 	}
 }

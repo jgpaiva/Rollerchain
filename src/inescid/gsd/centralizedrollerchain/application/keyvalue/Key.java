@@ -36,4 +36,8 @@ public class Key implements Serializable, Comparable<Key> {
 			return 0;
 		return id.hashCode();
 	}
+
+	public Identifier getID() {
+		return id;
+	}
 }
