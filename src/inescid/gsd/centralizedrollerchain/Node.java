@@ -24,7 +24,7 @@ public abstract class Node implements EventReceiver {
 	// This node's endpoint
 	protected final Endpoint endpoint;
 
-	protected final ScheduledExecutorService executor;
+	protected ScheduledExecutorService executor;
 
 	// Queue for the objects received from TCP
 	private final PriorityBlockingQueue<PriorityPair<Endpoint, Object>> queue = new PriorityBlockingQueue<PriorityPair<Endpoint, Object>>();
@@ -35,26 +35,24 @@ public abstract class Node implements EventReceiver {
 		this.endpoint = endpoint;
 		connectionManager = new ConnectionManager(this, endpoint);
 		// initialize the single thread of this node
-		executor = Executors.newScheduledThreadPool(1, new NamedThreadFactory("NodeThreadPool_"));
 		Node.logger.log(Level.INFO, "Created new Node");
-		executor.submit(new Runnable() {
-			@Override
-			public void run() {
-				init();
-			}
-		});
 	}
 
 	/**
 	 * Method used to initialize the node. If it needs to do something when
 	 * booted, this is where it should be done.
 	 */
-	public abstract void init();
+	public void init() {
+		executor = Executors.newScheduledThreadPool(1, new NamedThreadFactory("NodeThreadPool_"));
+	}
 
 	protected abstract void processEventInternal(Endpoint fst, Object snd);
 
 	@Override
 	public void processEvent(Endpoint source, Object message) {
+		if (executor == null)
+			Node.die("Node not initialized!");
+
 		Node.logger.log(Level.FINEST, "Queuing event from: " + source + " / " + message);
 		if (message instanceof Event)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
@@ -66,13 +64,17 @@ public abstract class Node implements EventReceiver {
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 2));
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
-		Node.logger.log(Level.FINEST, "Queued event from: " + source + " / " + message);
 		executor.submit(new Runnable() {
 			@Override
 			public void run() {
-				takeFromQueue();
+				try {
+					takeFromQueue();
+				} catch (Throwable t) {
+					Node.die(t);
+				}
 			}
 		});
+		Node.logger.log(Level.FINEST, "Queued event from: " + source + " / " + message);
 	}
 
 	private void takeFromQueue() {
@@ -92,6 +94,9 @@ public abstract class Node implements EventReceiver {
 	}
 
 	public void sendMessage(Endpoint dest, Event message) {
+		if (dest == null)
+			Node.die("Endpoint was null");
+
 		Node.logger.log(Level.FINE, endpoint + " S: " + dest + " / " + message);
 		Connection temp = connectionManager.getConnection(dest);
 		Node.logger.log(Level.FINEST, "got connection to send message: " + dest + " / "
@@ -112,6 +117,11 @@ public abstract class Node implements EventReceiver {
 		System.err.println("SEVERE ERROR: " + string);
 		Node.logger.log(Level.SEVERE, string);
 		System.exit(-29);
+	}
+
+	protected static void die(Throwable t) {
+		t.printStackTrace();
+		Node.die("Exception found when processing job: " + t);
 	}
 
 	public Endpoint getEndpoint() {

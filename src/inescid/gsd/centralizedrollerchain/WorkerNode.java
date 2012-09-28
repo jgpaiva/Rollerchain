@@ -26,6 +26,8 @@ public class WorkerNode extends Node {
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
 		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
+		if (masterEndpoint == null)
+			Node.die("Master endpoint is null");
 		upperLayer = new EventReceiver() {
 			@Override
 			public void processEvent(Endpoint source, Object message) {
@@ -37,6 +39,8 @@ public class WorkerNode extends Node {
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, EventReceiver upperLayer) {
 		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
+		if (masterEndpoint == null)
+			Node.die("Master endpoint is null");
 		this.upperLayer = upperLayer;
 	}
 
@@ -61,6 +65,7 @@ public class WorkerNode extends Node {
 
 	@Override
 	public void init() {
+		super.init();
 		sendMessage(masterEndpoint, new WorkerInit());
 	}
 

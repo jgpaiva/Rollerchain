@@ -52,6 +52,7 @@ public class TransportTest implements EventReceiver {
 		connectionManager = new ConnectionManager(this, endpoint);
 
 		tp.scheduleAtFixedRate(new Runnable() {
+			@Override
 			public void run() {
 				TransportTest.this.round();
 			}

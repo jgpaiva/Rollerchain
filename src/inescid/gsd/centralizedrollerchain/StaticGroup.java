@@ -16,4 +16,9 @@ public class StaticGroup extends TreeSet<Endpoint> {
 	public Identifier getID() {
 		return id;
 	}
+
+	@Override
+	public String toString() {
+		return id + "" + super.toString();
+	}
 }

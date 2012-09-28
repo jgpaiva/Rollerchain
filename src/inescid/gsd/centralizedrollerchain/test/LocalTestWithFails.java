@@ -22,6 +22,7 @@ public class LocalTestWithFails {
 		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
 		final MasterNode masterNode = new MasterNode(masterEndpoint);
+		masterNode.init();
 		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
 		LocalTestWithFails.setHandlerLevel();
 
@@ -35,6 +36,8 @@ public class LocalTestWithFails {
 		ArrayList<WorkerNode> workers = new ArrayList<WorkerNode>();
 		for (int it = 0; it < LocalTestWithFails.MAX_WORKERS; it++)
 			workers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1 + it), masterEndpoint));
+		for (WorkerNode it : workers)
+			it.init();
 
 		logger.log(Level.INFO, "Created all worker nodes");
 
@@ -53,19 +56,18 @@ public class LocalTestWithFails {
 			}
 		System.out.println("Started deaths");
 
-		masterNode.checkIntegrity();
-
 		try {
 			Thread.sleep(40000);
 		} catch (InterruptedException e1) {
 			e1.printStackTrace();
 		}
-		masterNode.checkIntegrity();
 
 		ArrayList<WorkerNode> newWorkers = new ArrayList<WorkerNode>();
 		for (int it = 0; it < deadNodes; it++)
 			newWorkers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1
 					+ LocalTestWithFails.MAX_WORKERS + it), masterEndpoint));
+		for (WorkerNode it : newWorkers)
+			it.init();
 
 		System.out.println("Started replacements");
 	}

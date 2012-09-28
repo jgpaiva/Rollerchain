@@ -1,9 +1,7 @@
 package inescid.gsd.centralizedrollerchain;
 
 import inescid.gsd.centralizedrollerchain.application.keyvalue.Key;
-import inescid.gsd.centralizedrollerchain.events.Divide;
 import inescid.gsd.centralizedrollerchain.events.Merge;
-import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.interfaces.Event;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.utils.Utils;
@@ -11,7 +9,6 @@ import inescid.gsd.utils.Utils;
 import java.util.Collection;
 import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class Group {
@@ -24,11 +21,11 @@ public class Group {
 	private Group successor;
 	private Group predecessor;
 	private ScheduledFuture<?> schedule;
-	private final boolean active;
+	private boolean active;
 	private final MasterNode owner;
-	public TreeSet<Key> keys;
+	private TreeSet<Key> keys;
 
-	Group(MasterNode owner,Identifier id,  TreeSet<Endpoint> members) {
+	Group(MasterNode owner, Identifier id, TreeSet<Endpoint> members) {
 		active = true;
 		this.id = id;
 		this.owner = owner;
@@ -40,22 +37,26 @@ public class Group {
 	}
 
 	public void setSchedule(ScheduledFuture<?> schedule) {
-		if(this.schedule != null)
+		if (this.schedule != null)
 			Node.die("Cannot set schedule more than once!");
-		
+
 		this.schedule = schedule;
 	}
 
 	@SuppressWarnings("unchecked")
 	void merge() {
-		if (MasterNode.getAllGroupsSize() == 1) return;
+		if (owner.s.getAllGroupsSize() == 1)
+			return;
 		assert (successor != null);
 
 		StaticGroup smallGroup = getStaticGroup();
 		StaticGroup successorGroup = successor.getStaticGroup();
 
-		MasterNode.removeFromAllGroups(this);
-		moveAllFrom(this, successor, finger);
+		owner.s.removeFromAllGroups(this);
+		owner.moveAllFrom(this, successor, finger);
+		for (Endpoint it : finger)
+			successor.addNode(it);
+
 		finger.clear();
 		cancelSchedule();
 
@@ -74,35 +75,15 @@ public class Group {
 		}
 		for (Endpoint it : successor.finger)
 			sendMessage(it, new Merge(smallGroup, successorGroup,
-					getSuccessor(),getPredecessor()));
+					getSuccessor(), getPredecessor()));
 	}
 
 	void divide(Group newGroup) {
-		final int initialSize = finger.size();
-		TreeSet<Endpoint> setNew = new TreeSet<Endpoint>();
-		TreeSet<Endpoint> oldGroup = new TreeSet<Endpoint>();
-		int newSize = initialSize / 2;
-		int oldSize = initialSize - newSize;
-
-		assert (oldSize >= newSize) : oldSize + " " + newSize + " " +
-				finger.size();
-		assert (oldSize >= 0) : oldSize + " " + newSize;
-		// assert (this.keys >= 0);
-		// int newKeys = (int) (this.keys / (((double) initialSize) /
-		// ((double)
-		// newSize)));
-		// int oldKeys = this.keys - newKeys;
-		// assert (newKeys > 0) : newKeys + " " + initialSize + " " +
-		// newSize +
-		// " " + this.keys;
-		// assert (oldKeys > 0) : oldKeys;
-
-		//new group will be smaller or equal to this
 		int futureGroupSize = finger.size() - (finger.size() / 2);
 		while (finger.size() > futureGroupSize)
-			setNew.add(Utils.removeRandomEl(getFinger()));
+			newGroup.addNode(Utils.removeRandomEl(getFinger()));
 
-		moveAllFrom(this, newGroup, newGroup.finger);
+		owner.moveAllFrom(this, newGroup, newGroup.finger);
 
 		if (predecessor != null) {
 			newGroup.predecessor = predecessor;
@@ -115,44 +96,30 @@ public class Group {
 			newGroup.predecessor = this;
 			newGroup.successor = this;
 		}
-		// newGroup.keys = newKeys;
-		// this.keys = oldKeys;
-
-		for (Endpoint it : newGroup.finger)
-			sendMessage(it, new Divide(newGroup.getStaticGroup(), getStaticGroup()));
-		for (Endpoint it : finger)
-			sendMessage(it, new Divide(newGroup.getStaticGroup(), getStaticGroup()));
 	}
 
 	void addNode(Endpoint node) {
 		finger.add(node);
-		for (Endpoint it : finger)
-			sendMessage(node, new SetNeighbours(getStaticGroup(), getPredecessor(),getSuccessor()));
 	}
 
 	public void removeNode(Endpoint source) {
 		if (!finger.remove(source))
-			Group.logger.log(Level.SEVERE, "Endpoint " + source + " was not in finger!" + this);
+			Node.die("Endpoint " + source + " was not in finger!" + this);
 	}
 
-	private void sendMessage(Endpoint dest, Event Message) {
-		// TODO: finish me!
+	private void sendMessage(Endpoint dest, Event message) {
+		owner.sendMessage(dest, message);
 	}
-	
-	private void createGroup(TreeSet<Endpoint>, Identifier id){
-		// TODO: finish me!
-	}
-
 
 	private void cancelSchedule() {
 		if (getFinger().size() > 0) {
-			Group.logger.log(Level.SEVERE, "canceling a schedule for a group with nodes: + this");
+			Node.die("canceling a schedule for a group with nodes: + this");
 			Thread.dumpStack();
 		}
 		schedule.cancel(false);
 		active = false;
 	}
-	
+
 	public int size() {
 		return finger.size();
 	}
@@ -168,19 +135,29 @@ public class Group {
 	public StaticGroup getStaticGroup() {
 		return new StaticGroup(this);
 	}
-	
-	public StaticGroup getPredecessor(){
-		return predecessor!=null? predecessor.getStaticGroup():null;
+
+	public StaticGroup getPredecessor() {
+		return predecessor != null ? predecessor.getStaticGroup() : null;
 	}
-	
-	public StaticGroup getSuccessor(){
-		return successor!=null? successor.getStaticGroup():null;
+
+	public StaticGroup getSuccessor() {
+		return successor != null ? successor.getStaticGroup() : null;
+	}
+
+	public TreeSet<Key> getKeys() {
+		return keys;
+	}
+
+	public void setKeys(TreeSet<Key> keys) {
+		this.keys = keys;
+	}
+
+	private int getKeySize() {
+		return keys != null ? keys.size() : 0;
 	}
 
 	@Override
 	public String toString() {
-		return
-		// this.keys +
-		"" + finger + "" + (active ? "A" : "I");
+		return getID() + ":" + getKeySize() + " " + finger + "" + (active ? "A" : "I");
 	}
 }

@@ -4,6 +4,14 @@ import java.math.BigInteger;
 import java.util.Random;
 
 public class Identifier extends BigInteger {
+	public static final Identifier ZERO = new Identifier(BigInteger.ZERO);
+	private static final BigInteger TWO = BigInteger.ONE.add(BigInteger.ONE);
+	private static final BigInteger RINGSIZE = new Identifier(BigInteger.ONE
+			.add(BigInteger.ONE).pow(Configuration.getIDSize()));
+	public static final Identifier MIDDLE_POINT = new Identifier(Identifier.RINGSIZE.divide(BigInteger.ONE
+			.add(BigInteger.ONE)));
+	private static final long serialVersionUID = 4305665313496090598L;
+
 	public Identifier(String val, int radix) {
 		super(val, radix);
 		// TODO Auto-generated constructor stub
@@ -43,5 +51,8 @@ public class Identifier extends BigInteger {
 		return super.toString(Character.MAX_RADIX);
 	}
 
-	private static final long serialVersionUID = 4305665313496090598L;
+	public static Identifier calculateMiddlePoint(Identifier id, Identifier predecessor) {
+		BigInteger ret = id.add(predecessor).divide(Identifier.TWO).mod(Identifier.RINGSIZE);
+		return new Identifier(ret);
+	}
 }

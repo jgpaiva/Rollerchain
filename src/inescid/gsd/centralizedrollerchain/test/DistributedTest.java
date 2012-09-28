@@ -16,7 +16,7 @@ public class DistributedTest {
 		if (args.length != 4) {
 			System.err.println("Invalid parameters!");
 			System.err
-					.println("usage: DistributedTest <local hostname> <local port> <master hostname> <master port>");
+			.println("usage: DistributedTest <local hostname> <local port> <master hostname> <master port>");
 			System.exit(-1);
 		}
 
@@ -50,10 +50,12 @@ public class DistributedTest {
 		Node myNode;
 		if (masterEndpoint.equals(myEndpoint)) {
 			myNode = new MasterNode(myEndpoint); // is master
+			myNode.init();
 			logger.log(Level.INFO, "Now starting server");
 		} else {
 			DistributedTest.sleep(2000);
 			myNode = new WorkerNode(myEndpoint, masterEndpoint); // is worker
+			myNode.init();
 
 			System.out.println("Starting Node");
 

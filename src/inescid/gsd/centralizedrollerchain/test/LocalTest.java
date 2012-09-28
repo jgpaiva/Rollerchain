@@ -12,17 +12,18 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class LocalTest {
-	private static final int MAX_WORKERS = 20;
+	private static final int MAX_WORKERS = 50;
 
 	public static void main(String[] args) {
 		final Logger logger = Logger.getLogger(
 				LocalTest.class.getName());
-		Endpoint masterEndpoint = new Endpoint("localhost", 8090);
 
-		final MasterNode masterNode = new MasterNode(masterEndpoint);
-		Logger.getLogger(Node.class.getName()).setLevel(Level.ALL);
+		Logger.getLogger(Node.class.getName()).setLevel(Level.INFO);
 		LocalTest.setHandlerLevel();
 
+		final Endpoint masterEndpoint = new Endpoint("localhost", 8090);
+		final MasterNode masterNode = new MasterNode(masterEndpoint);
+		masterNode.init();
 		logger.log(Level.INFO, "Created master");
 		try {
 			Thread.sleep(2000);
@@ -33,6 +34,8 @@ public class LocalTest {
 		ArrayList<WorkerNode> workers = new ArrayList<WorkerNode>();
 		for (int it = 0; it < LocalTest.MAX_WORKERS; it++)
 			workers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1 + it), masterEndpoint));
+		for (WorkerNode it : workers)
+			it.init();
 
 		logger.log(Level.INFO, "Created all worker nodes");
 	}
