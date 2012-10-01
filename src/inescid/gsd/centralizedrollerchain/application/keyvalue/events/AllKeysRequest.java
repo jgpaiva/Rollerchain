@@ -20,4 +20,9 @@ public class AllKeysRequest extends UniqueIDMessage {
 	public Identifier getPredecessorID() {
 		return predecessor;
 	}
+
+	@Override
+	public String toString() {
+		return super.toString() + " for group " + groupID + " with predecessor " + predecessor;
+	}
 }

@@ -47,7 +47,7 @@ public class KeyMessageManager {
 		else
 			for (UniqueIDMessage it : messageMap.values())
 				if (it instanceof KeysRequest)
-					otherKeys.removeAll(((KeysRequest) it).getToRequest().asList());
+					otherKeys.removeAll(((KeysRequest) it).getRequested().asList());
 	}
 
 	public void nextRound() {

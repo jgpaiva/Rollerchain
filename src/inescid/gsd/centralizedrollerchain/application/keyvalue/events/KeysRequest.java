@@ -11,7 +11,7 @@ public class KeysRequest extends UniqueIDMessage {
 		this.toRequest = toRequest;
 	}
 
-	public KeyListing getToRequest() {
+	public KeyListing getRequested() {
 		return toRequest;
 	}
 }

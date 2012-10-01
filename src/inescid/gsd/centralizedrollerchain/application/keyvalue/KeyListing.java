@@ -11,7 +11,7 @@ public class KeyListing implements Serializable, Iterable<Key> {
 	private final Key[] listing;
 
 	public KeyListing(TreeSet<Key> keys) {
-		listing = (Key[]) keys.toArray();
+		listing = keys.toArray(new Key[keys.size()]);
 	}
 
 	public KeyStorage getKeyStorage() {

@@ -62,4 +62,43 @@ public class Utils {
 		return toReturn;
 	}
 
+	public static Iterable<Integer> range(final int upTo) {
+		return new MyIterable(upTo);
+	}
+
+	public static Iterable<Integer> range(Collection<?> upTo) {
+		return new MyIterable(upTo.size());
+	}
+}
+
+class MyIterable implements Iterable<Integer> {
+	final int upTo;
+
+	MyIterable(int upTo) {
+		this.upTo = upTo;
+	}
+
+	@Override
+	public Iterator<Integer> iterator() {
+		return new MyIterableIterator();
+	}
+
+	class MyIterableIterator implements Iterator<Integer> {
+		int counter = 0;
+
+		@Override
+		public boolean hasNext() {
+			return counter < upTo;
+		}
+
+		@Override
+		public Integer next() {
+			return counter++;
+		}
+
+		@Override
+		public void remove() {
+			// TODO Auto-generated method stub
+		}
+	}
 }

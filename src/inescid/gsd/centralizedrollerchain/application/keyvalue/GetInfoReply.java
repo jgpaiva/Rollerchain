@@ -1,8 +1,8 @@
 package inescid.gsd.centralizedrollerchain.application.keyvalue;
 
-import inescid.gsd.centralizedrollerchain.interfaces.Event;
+import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 
-public class GetInfoReply extends Event {
+public class GetInfoReply extends UpperLayerMessage {
 	private static final long serialVersionUID = 3871969048205446146L;
 	private final Key[] keys;
 

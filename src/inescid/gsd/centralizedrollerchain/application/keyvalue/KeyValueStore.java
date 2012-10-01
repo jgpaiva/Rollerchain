@@ -2,21 +2,21 @@ package inescid.gsd.centralizedrollerchain.application.keyvalue;
 
 import inescid.gsd.centralizedrollerchain.Configuration;
 import inescid.gsd.centralizedrollerchain.Identifier;
+import inescid.gsd.centralizedrollerchain.Node;
 import inescid.gsd.centralizedrollerchain.StaticGroup;
 import inescid.gsd.centralizedrollerchain.WorkerNode;
-import inescid.gsd.centralizedrollerchain.application.keyvalue.events.AllKeysReply;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.AllKeysRequest;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.GossipKeys;
+import inescid.gsd.centralizedrollerchain.application.keyvalue.events.KeysReply;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.KeysRequest;
 import inescid.gsd.centralizedrollerchain.events.DivideIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.GetInfo;
 import inescid.gsd.centralizedrollerchain.events.GroupUpdate;
 import inescid.gsd.centralizedrollerchain.events.JoinedNetwork;
 import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
+import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
-import inescid.gsd.transport.ConnectionManager;
 import inescid.gsd.transport.Endpoint;
-import inescid.gsd.transport.interfaces.EventReceiver;
 import inescid.gsd.utils.Utils;
 
 import java.util.concurrent.ScheduledExecutorService;
@@ -24,34 +24,48 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class KeyValueStore implements EventReceiver {
+public class KeyValueStore implements UpperLayer {
 
-	private final ConnectionManager connectionManager;
-	private final WorkerNode owner;
-	private final ScheduledExecutorService executor;
-	static final Logger logger = Logger.getLogger(KeyValueStore.class.getName());
+	private WorkerNode owner;
+	private ScheduledExecutorService executor;
+	private static final Logger logger = Logger.getLogger(KeyValueStore.class.getName());
 	private final KeyStorage keys;
 	private final KeyMessageManager keyMessageManager;
 	private final KeyRemovalManager keyRemovalManager;
+	private final FiliationManager filiationManager;
 
-	KeyValueStore(ConnectionManager manager, WorkerNode owner) {
-		connectionManager = manager;
+	public KeyValueStore() {
 		keyMessageManager = new KeyMessageManager();
 		keys = new KeyStorage();
 		keyRemovalManager = new KeyRemovalManager(keys);
-		this.owner = owner;
-		executor = this.owner.getExecutor();
-		executor.scheduleAtFixedRate(new Runnable() {
-			@Override
-			public void run() {
-				nextRound();
-			}
-		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
+		filiationManager = new FiliationManager(this);
+		owner = null;
+		executor = null;
 		KeyValueStore.logger.log(Level.INFO, "Created new KeyValueStore node");
 	}
 
 	@Override
+	public void init(Node owner) {
+		this.owner = (WorkerNode) owner;
+		executor = owner.getExecutor();
+		executor.scheduleAtFixedRate(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					nextRound();
+				} catch (Throwable t) {
+					KeyValueStore.die(t);
+				}
+			}
+		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
+		KeyValueStore.logger.log(Level.INFO, "Initialized KeyValueStore");
+	}
+
+	@Override
 	public void processEvent(Endpoint source, Object message) {
+		if (executor == null)
+			KeyValueStore.die("KeyValueStore not initialized");
+
 		KeyValueStore.logger.log(Level.FINE, "KeyValue " + " R: " + source + " / "
 				+ message);
 		if (message instanceof JoinedNetwork)
@@ -62,26 +76,33 @@ public class KeyValueStore implements EventReceiver {
 			processDivideIDUpdate(source, (DivideIDUpdate) message);
 		else if (message instanceof MergeIDUpdate)
 			processMergeIDUpdate(source, (MergeIDUpdate) message);
+		else if (message instanceof KeysRequest)
+			processKeysRequest(source, (KeysRequest) message);
 		else if (message instanceof AllKeysRequest)
 			processAllKeysRequest(source, (AllKeysRequest) message);
-		else if (message instanceof AllKeysReply)
-			processAllKeysReply(source, (AllKeysReply) message);
+		else if (message instanceof KeysReply)
+			processKeysReply(source, (KeysReply) message);
 		else if (message instanceof GossipKeys)
 			processGossipKeys(source, (GossipKeys) message);
 		else if (message instanceof GetInfo)
 			processGetInfo(source, (GetInfo) message);
+		else if (message instanceof NodeGroupPairList)
+			filiationManager.processNodeGroupPairList(source, (NodeGroupPairList) message);
+		else if (message instanceof NodeGroupPairListReply)
+			filiationManager.processNodeGroupPairListReply(source, (NodeGroupPairListReply) message);
 		else
-			KeyValueStore.logger.log(Level.SEVERE, "Received unknown event: " + message);
+			KeyValueStore.die("Received unknown event: " + message);
 	}
 
 	private void processJoinedNetwork(Endpoint source, JoinedNetwork message) {
-		if (message.getGroup().size() == 1)
-			// I'm seed node
-			createKeys();
-		else {
+		if (message.getGroup().size() == 1) {
+			createSeedKeys();// I'm seed node, create seed keys
+			KeyValueStore.logger.log(Level.INFO, "seed: created " + keys.size() + " keys");
+		} else {
 			Endpoint randomDest = Utils.getRandomEl(message.getGroup(), owner.getEndpoint());
 			sendMessage(randomDest, new AllKeysRequest(message.getGroup().getID(), message
 					.getPredecessorID()));
+			KeyValueStore.logger.log(Level.INFO, "Requested keys from: " + randomDest);
 		}
 	}
 
@@ -94,36 +115,62 @@ public class KeyValueStore implements EventReceiver {
 	}
 
 	private void processMergeIDUpdate(Endpoint source, MergeIDUpdate message) {
-		// Force obtainal of keys by pushing a gossip
+		// Speed up obtainal of keys by pushing a gossip
+		if (message.getPredecessorGroup() != null)
+			sendGossip(message.getCurrentGroup(), message.getPredecessorGroup().getID());
+	}
+
+	private void processKeysRequest(Endpoint source, KeysRequest message) {
+		KeyContainer toReturn = keys.get(message.getRequested());
+		sendMessage(source, new KeysReply(toReturn, message));
 	}
 
 	private void processAllKeysRequest(Endpoint source, AllKeysRequest message) {
 		KeyContainer container = keys.getKeys(message.getPredecessorID(), message.getGroupID());
-		sendMessage(source, new AllKeysReply(container));
+		sendMessage(source, new KeysReply(container, message));
 	}
 
-	private void processAllKeysReply(Endpoint source, AllKeysReply message) {
+	private void processKeysReply(Endpoint source, KeysReply message) {
 		keys.addAll(message.getContainer());
+		keyMessageManager.deRegisterMessage(message.getMessageID());
+	}
+
+	private void processGetInfo(Endpoint source, GetInfo message) {
+		KeyValueStore.logger.log(Level.INFO, "STATUS: " + keys.size() + " keys. id:"
+				+ owner.getGroup().getID() + " predID:" + owner.getPredecessorID());
+
+		sendMessage(source, new GetInfoReply(keys.getKeys(owner.getPredecessorID(), owner
+				.getGroup().getID()).getKeys().toArray(new Key[0])));
 	}
 
 	/**
-	 * cyclic communication step
+	 * Cyclic communication step. Repeated every
+	 * {@link Configuration#getRoundTime()}.
 	 */
 	private void nextRound() {
+		KeyValueStore.logger.log(Level.INFO, owner.getEndpoint() + " Entering nextRound()");
 		StaticGroup myGroup = owner.getGroup();
-
-		if (myGroup.getID() == null)
-			return;
-
 		Identifier predecessorID = owner.getPredecessorID();
+
+		filiationManager.nextRound(owner.getGroup(), owner.getPredecessor(), owner.getSuccessor());
+
+		if (myGroup.getID() != null) {
+			if (predecessorID != null)
+				keyRemovalManager.nextRound(predecessorID, myGroup.getID());
+			sendGossip(myGroup, predecessorID);
+			keyMessageManager.nextRound();
+		}
+		KeyValueStore.logger.log(Level.INFO, owner.getEndpoint() + " Finished nextRound(). Group was "
+				+ myGroup.getID() + " predecessorID was " + predecessorID);
+	}
+
+	public void sendGossip(StaticGroup myGroup, Identifier predecessorID) {
 		if (myGroup.size() > 1) {
 			Endpoint randomDest = Utils.getRandomEl(myGroup, owner.getEndpoint());
-			sendMessage(randomDest,
-					new GossipKeys(myGroup.getID(), predecessorID, keys.getKeyListing()));
+			KeyListing temp = keys.getKeyListing();
+			GossipKeys msg = new GossipKeys(myGroup.getID(), predecessorID, temp);
+			sendMessage(randomDest, msg);
 		}
-
-		keyMessageManager.nextRound();
-		keyRemovalManager.nextRound(predecessorID, myGroup.getID());
 	}
 
 	private void processGossipKeys(Endpoint source, GossipKeys message) {
@@ -144,18 +191,30 @@ public class KeyValueStore implements EventReceiver {
 		}
 	}
 
-	private void processGetInfo(Endpoint source, GetInfo message) {
-		owner.sendMessage(
-				source,
-				new GetInfoReply((Key[]) keys.getKeys(owner.getPredecessorID(), owner
-						.getGroup().getID()).getKeys().toArray()));
-	}
-
-	private void createKeys() {
+	private void createSeedKeys() {
 		keys.init();
 	}
 
-	private void sendMessage(Endpoint dest, UpperLayerMessage msg) {
+	void sendMessage(Endpoint dest, UpperLayerMessage msg) {
 		owner.sendMessage(dest, msg);
+	}
+
+	public static void die(String string) {
+		Thread.dumpStack();
+		System.out.println("SEVERE ERROR: " + string);
+		System.err.println("SEVERE ERROR: " + string);
+		KeyValueStore.logger.log(Level.SEVERE, string);
+		System.exit(-29);
+	}
+
+	protected static void die(Throwable t) {
+		t.printStackTrace();
+		KeyValueStore.die("Exception found when processing job: " + t);
+	}
+
+	public Endpoint getEndpoint() {
+		if(owner == null)
+			KeyValueStore.die("Shoule never happen");
+		return owner.getEndpoint();
 	}
 }

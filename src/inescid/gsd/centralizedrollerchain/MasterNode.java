@@ -100,7 +100,7 @@ public class MasterNode extends Node {
 			TreeSet<Key> keys) {
 		int size = keys.size();
 		int smallGroupSize = groupSize / 2;
-		int middle = (size * groupSize) / smallGroupSize;
+		int middle = (size * smallGroupSize) / groupSize;
 		if (middle == 0)
 			return null;
 
@@ -122,7 +122,8 @@ public class MasterNode extends Node {
 				return value;
 		}
 
-		throw new RuntimeException("Unreacheable code!");
+		throw new RuntimeException("Unreacheable code! " + ID + " " + predID + " " + middle + " " + size
+				+ " " + smallGroupSize + " " + counter);
 	}
 
 	private Group getGroupToJoin() {

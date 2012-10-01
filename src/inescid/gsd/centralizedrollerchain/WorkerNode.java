@@ -9,10 +9,10 @@ import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
+import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
 import inescid.gsd.transport.Endpoint;
-import inescid.gsd.transport.interfaces.EventReceiver;
 
 import java.util.logging.Level;
 
@@ -21,22 +21,27 @@ public class WorkerNode extends Node {
 
 	private final WorkerNodeInternalState s = new WorkerNodeInternalState();
 
-	private final EventReceiver upperLayer;
+	private final UpperLayer upperLayer;
 
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
 		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
 		if (masterEndpoint == null)
 			Node.die("Master endpoint is null");
-		upperLayer = new EventReceiver() {
+		upperLayer = new UpperLayer() {
 			@Override
 			public void processEvent(Endpoint source, Object message) {
 				// discard event
 			}
+
+			@Override
+			public void init(Node n) {
+				// discard init
+			}
 		};
 	}
 
-	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, EventReceiver upperLayer) {
+	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, UpperLayer upperLayer) {
 		super(endpoint);
 		this.masterEndpoint = masterEndpoint;
 		if (masterEndpoint == null)
@@ -66,6 +71,7 @@ public class WorkerNode extends Node {
 	@Override
 	public void init() {
 		super.init();
+		upperLayer.init(this);
 		sendMessage(masterEndpoint, new WorkerInit());
 	}
 
@@ -75,7 +81,7 @@ public class WorkerNode extends Node {
 		s.setSuccessorGroup(setNeighbours.getSuccessorGroup());
 		s.setPredecessorGroup(setNeighbours.getPredecessorGroup());
 
-		if (s.getGroup() == null)
+		if (oldGroup == null)
 			upperLayer.processEvent(source,
 					new JoinedNetwork(setNeighbours.getGroup(), s.getPredecessorID()));
 		else {
@@ -135,6 +141,14 @@ public class WorkerNode extends Node {
 
 	public Identifier getPredecessorID() {
 		return s.getPredecessorID();
+	}
+
+	public StaticGroup getPredecessor() {
+		return s.getPredecessorGroup();
+	}
+
+	public StaticGroup getSuccessor() {
+		return s.getSuccessorGroup();
 	}
 }
 

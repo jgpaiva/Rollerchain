@@ -27,7 +27,7 @@ public class KeyStorage implements Iterable<Key> {
 	 * Creates the first batch of keys
 	 */
 	public void init() {
-		Random r = new Random(Configuration.getRandomSeed());
+		Random r = new Random(Configuration.getKeysRandomSeed());
 		int minKeySize = Configuration.getMinKeySize();
 		int maxKeySize = Configuration.getMaxKeySize();
 		int idSize = Configuration.getIDSize();
@@ -38,7 +38,6 @@ public class KeyStorage implements Iterable<Key> {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
 	public KeyContainer getKeys(Identifier lowerID, Identifier higherID) {
 		TreeSet<Key> result = KeyStorage.filterInternal(lowerID, higherID, keys, false);
 		if (result == null)
@@ -73,7 +72,14 @@ public class KeyStorage implements Iterable<Key> {
 
 		Key higher = new Key(higherID, 0);
 		Key lower = new Key(lowerID, 0);
-		if (reverse != (lower.compareTo(higher) <= 0)) {
+
+		if (reverse) {
+			Key temp = higher;
+			higher = lower;
+			lower = temp;
+		}
+
+		if (lower.compareTo(higher) <= 0) {
 			NavigableSet<Key> temp = keySet.subSet(lower, false, higher, true);
 			if (temp.size() == keySet.size())
 				return null;
@@ -98,10 +104,6 @@ public class KeyStorage implements Iterable<Key> {
 
 	public KeyListing getKeyListing() {
 		return new KeyListing(keys);
-	}
-
-	public void removeAll(TreeSet<Key> keysInRequest) {
-		keys.removeAll(keysInRequest);
 	}
 
 	public int size() {
@@ -134,5 +136,11 @@ public class KeyStorage implements Iterable<Key> {
 
 	public void retainAll(Collection<Key> toRetain) {
 		keys.retainAll(toRetain);
+	}
+
+	public KeyContainer get(KeyListing toGet) {
+		TreeSet<Key> temp = (TreeSet<Key>) keys.clone();
+		temp.retainAll(toGet.asList());
+		return new KeyContainer(temp);
 	}
 }

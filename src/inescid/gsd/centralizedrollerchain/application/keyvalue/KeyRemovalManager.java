@@ -6,10 +6,13 @@ import inescid.gsd.centralizedrollerchain.Identifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.TreeSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class KeyRemovalManager {
 	private final KeyStorage keys;
 	private final ArrayList<TreeSet<Key>> toRemove;
+	private static final Logger logger = Logger.getLogger(KeyRemovalManager.class.getName());
 
 	public KeyRemovalManager(KeyStorage keys) {
 		this.keys = keys;
@@ -27,11 +30,38 @@ public class KeyRemovalManager {
 			toRemoveThisRound.removeAll(it);
 		}
 
+		if (toRemoveThisRound.size() >= keys.size())
+			KeyRemovalManager.logger.log(Level.WARNING,
+					"Scheduling all keys for deletion? toRemoveThisRound:"
+					+ toRemoveThisRound + " keys:" + keys + " lowerID: " + lowerID + " higherID" + higherID);
+
 		// remove keys that have gone through the N rounds
 		Collections.rotate(toRemove, 1);
-		keys.removeAll(toRemove.get(0));
+		if (toRemove.get(0).size() > 0)
+			keys.removeAll(toRemove.get(0));
+
+		printInfo(toRemove.get(0), toRemoveThisRound);
 
 		// add the keys for the current round;
 		toRemove.set(0, toRemoveThisRound);
+	}
+
+	private void printInfo(TreeSet<Key> nowRemoving, TreeSet<Key> toRemoveThisRound) {
+		if (nowRemoving.size() > 0) {
+			String tmp = "Removed " + nowRemoving.size() + ". Has " + keys.size() + " keys. ";
+
+			if (toRemoveThisRound.size() > 0)
+				KeyRemovalManager.logger.log(Level.INFO, tmp + "Scheduled " + toRemoveThisRound.size()
+						+ " for removal.");
+			else
+				KeyRemovalManager.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
+		} else {
+			String tmp = "Did not remove. Has " + keys.size() + " keys. ";
+			if (toRemoveThisRound.size() > 0)
+				KeyRemovalManager.logger.log(Level.FINE, tmp + "Scheduled " + toRemoveThisRound.size()
+						+ " for removal.");
+			else
+				KeyRemovalManager.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
+		}
 	}
 }

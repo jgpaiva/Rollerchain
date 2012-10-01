@@ -14,4 +14,8 @@ public class KeyContainer implements Serializable {
 	public TreeSet<Key> getKeys() {
 		return keys;
 	}
+
+	public int size() {
+		return keys.size();
+	}
 }
