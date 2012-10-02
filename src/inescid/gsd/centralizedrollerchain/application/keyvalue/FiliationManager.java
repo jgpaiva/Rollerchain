@@ -4,6 +4,7 @@ import inescid.gsd.centralizedrollerchain.Configuration;
 import inescid.gsd.centralizedrollerchain.Identifier;
 import inescid.gsd.centralizedrollerchain.StaticGroup;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.utils.Utils;
 
 import java.io.Serializable;
@@ -46,7 +47,6 @@ public class FiliationManager {
 				lastSentPair = new NodeGroupPair(owner.getEndpoint(), group.getID(), counter);
 				counter++;
 			}
-
 			owner.sendMessage(randDest, new NodeGroupPairList(getSample()));
 		}
 
@@ -56,10 +56,8 @@ public class FiliationManager {
 			if (it.decrTTL() <= 0)
 				toRemove.add(it);
 		if (toRemove.size() > 0) {
-			for (NodeGroupPair it : toRemove) {
-				aknownSites.remove(it.getEndpoint());
-				orderedSites.remove(it);
-			}
+			for (NodeGroupPair it : toRemove)
+				removeEndpoint(it.getEndpoint());
 			logger.log(Level.FINE, "Removed pointers: " + toRemove);
 		}
 		logger.log(Level.INFO, owner.getEndpoint() + " knows " + aknownSites.size() + aknownSites);
@@ -75,14 +73,11 @@ public class FiliationManager {
 			}
 
 			NodeGroupPair temp = aknownSites.get(newPair.getEndpoint());
-			if (temp == null) {
-				aknownSites.put(newPair.getEndpoint(), newPair);
-				orderedSites.add(newPair);
-			} else if (temp.getVersion() < newPair.getVersion()) {
-				aknownSites.remove(temp.getEndpoint());
-				orderedSites.remove(temp);
-				aknownSites.put(newPair.getEndpoint(), newPair);
-				orderedSites.add(newPair);
+			if (temp == null)
+				addEndpoint(newPair);
+			else if (temp.getVersion() < newPair.getVersion()) {
+				removeEndpoint(temp.getEndpoint());
+				addEndpoint(newPair);
 			} else if (temp.getVersion() > newPair.getVersion())
 				toReply.add(temp);
 			else if (temp.getTTL() < newPair.getTTL())
@@ -93,20 +88,18 @@ public class FiliationManager {
 				getBiasedSample(toReply, message.getSample())));
 	}
 
+
 	public void processNodeGroupPairListReply(Endpoint source, NodeGroupPairListReply message) {
 		for (NodeGroupPair newPair : Arrays.asList(message.getSample())) {
 			if (newPair.getEndpoint().equals(owner.getEndpoint()))
 				KeyValueStore.die("my endpoint was in a reply. should never happen");
 
 			NodeGroupPair temp = aknownSites.get(newPair.getEndpoint());
-			if (temp == null) {
-				aknownSites.put(newPair.getEndpoint(), newPair);
-				orderedSites.add(newPair);
-			} else if (temp.getVersion() < newPair.getVersion()) {
-				aknownSites.remove(temp.getEndpoint());
-				orderedSites.remove(temp);
-				aknownSites.put(newPair.getEndpoint(), newPair);
-				orderedSites.add(newPair);
+			if (temp == null)
+				addEndpoint(newPair);
+			else if (temp.getVersion() < newPair.getVersion()) {
+				removeEndpoint(temp.getEndpoint());
+				addEndpoint(newPair);
 			} else if (temp.getTTL() < newPair.getTTL())
 				temp.setTTL(newPair.getTTL());
 		}
@@ -138,6 +131,21 @@ public class FiliationManager {
 			toSend.add(el);
 		}
 		return toSend.toArray(new NodeGroupPair[0]);
+	}
+
+	public void processDeathNotification(Endpoint source, DeathNotification message) {
+		removeEndpoint(source);
+	}
+
+	private void addEndpoint(NodeGroupPair newPair) {
+		aknownSites.put(newPair.getEndpoint(), newPair);
+		orderedSites.add(newPair);
+	}
+
+	private void removeEndpoint(Endpoint it) {
+		NodeGroupPair temp = aknownSites.remove(it);
+		if (temp != null)
+			orderedSites.remove(temp);
 	}
 }
 
@@ -196,6 +204,6 @@ class NodeGroupPair implements Serializable, Comparable<NodeGroupPair> {
 
 	@Override
 	public String toString() {
-		return endpoint + "=" + groupID;
+		return endpoint + "=" + groupID + ";" + version;
 	}
 }

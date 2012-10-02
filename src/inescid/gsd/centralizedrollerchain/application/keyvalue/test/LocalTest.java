@@ -47,13 +47,10 @@ public class LocalTest {
 		logger.log(Level.INFO, "Created master");
 		LocalTest.sleep(2);
 
-		ArrayList<KeyValueStore> stores = new ArrayList<KeyValueStore>();
-		for (int it = 0; it < LocalTest.MAX_WORKERS; it++)
-			stores.add(new KeyValueStore());
 		ArrayList<WorkerNode> workers = new ArrayList<WorkerNode>();
 		for (int it = 0; it < LocalTest.MAX_WORKERS; it++)
 			workers.add(new WorkerNode(new Endpoint("localhost", 8090 + 1 + it), masterEndpoint,
-					stores.get(it)));
+					new KeyValueStore()));
 
 		for (WorkerNode it : workers) {
 			it.init();

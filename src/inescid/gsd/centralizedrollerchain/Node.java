@@ -1,5 +1,6 @@
 package inescid.gsd.centralizedrollerchain;
 
+import inescid.gsd.centralizedrollerchain.events.InstantDeath;
 import inescid.gsd.centralizedrollerchain.interfaces.Event;
 import inescid.gsd.centralizedrollerchain.interfaces.InternalEvent;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
@@ -53,6 +54,11 @@ public abstract class Node implements EventReceiver {
 		if (executor == null)
 			Node.die("Node not initialized!");
 
+		if (message instanceof InstantDeath) {
+			Node.logger.log(Level.SEVERE, "Now dying. Received " + message + " from " + source);
+			System.exit(-1);
+		}
+
 		Node.logger.log(Level.FINEST, "Queuing event from: " + source + " / " + message);
 		if (message instanceof Event)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
@@ -105,10 +111,11 @@ public abstract class Node implements EventReceiver {
 		Node.logger.log(Level.FINEST, "sent message: " + dest + " / " + message);
 	}
 
-	public void kill() {
+	public void kill(Endpoint source) {
 		connectionManager.shutdown();
 		queue.clear();
 		executor.shutdownNow();
+		Node.logger.log(Level.SEVERE, "node " + endpoint + " was killed by " + source);
 	}
 
 	public static void die(String string) {

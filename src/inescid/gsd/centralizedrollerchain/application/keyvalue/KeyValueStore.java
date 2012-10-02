@@ -17,6 +17,7 @@ import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.utils.Utils;
 
 import java.util.concurrent.ScheduledExecutorService;
@@ -90,6 +91,8 @@ public class KeyValueStore implements UpperLayer {
 			filiationManager.processNodeGroupPairList(source, (NodeGroupPairList) message);
 		else if (message instanceof NodeGroupPairListReply)
 			filiationManager.processNodeGroupPairListReply(source, (NodeGroupPairListReply) message);
+		else if (message instanceof DeathNotification)
+			filiationManager.processDeathNotification(source, (DeathNotification) message);
 		else
 			KeyValueStore.die("Received unknown event: " + message);
 	}

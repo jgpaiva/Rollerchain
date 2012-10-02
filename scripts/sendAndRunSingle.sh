@@ -22,7 +22,7 @@ MASTER="$MASTERHOSTNAME $MASTERPORT"
 JARFILEB=`basename $JARFILE`
 CONFIGFILEB=`basename $CONFIGFILE`
 
-JAVACLASS="inescid.gsd.centralizedrollerchain.test.DistributedTest"
+JAVACLASS="inescid.gsd.centralizedrollerchain.application.keyvalue.test.DistributedTest"
 LIB1="jarlibs/netty-3.5.7.Final-sources.jar"
 LIB2="jarlibs/netty-3.5.7.Final.jar"
 

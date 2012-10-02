@@ -44,6 +44,7 @@ public class Connection extends SimpleChannelUpstreamHandler {
 		this.connectionManager = connectionManager;
 		otherEndpoint = endpoint;
 		channel = null;
+		incomingChannel = null;
 	}
 
 	public Connection(ConnectionManager connectionManager, Endpoint endpoint,
@@ -145,9 +146,9 @@ public class Connection extends SimpleChannelUpstreamHandler {
 	}
 
 	public void addIncomingChannel(IncomingChannelHandler incomingChannel) {
-		if (this.incomingChannel != null) ConnectionManager
-				.die(this.getClass().getName()
-						+ "trying to close different incoming channel handler for connection!");
+		if (this.incomingChannel != null)
+			ConnectionManager.die(this.getClass().getName()
+					+ "trying to add different incoming channel handler for connection!");
 		synchronized (this) {
 			this.incomingChannel = incomingChannel;
 		}
@@ -193,8 +194,10 @@ public class Connection extends SimpleChannelUpstreamHandler {
 		synchronized (this) {
 			if (incomingChannel != incomingChannelHandler)
 				ConnectionManager
-						.die(this.getClass().getName()
-								+ "trying to close different incoming channel handler for connection!");
+				.die(this.getClass().getName()
+						+ "trying to close different incoming channel handler for connection! "
+								+ incomingChannel + "!=" + incomingChannelHandler + " for endpoint: "
+								+ otherEndpoint);
 			if (incomingChannel.getChannel() == channel) cleanDie();
 		}
 	}

@@ -13,6 +13,7 @@ import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
 import inescid.gsd.transport.Endpoint;
+import inescid.gsd.transport.events.DeathNotification;
 
 import java.util.logging.Level;
 
@@ -63,6 +64,8 @@ public class WorkerNode extends Node {
 		else if (message instanceof GetInfo)
 			processGetInfo(source, (GetInfo) message);
 		else if (message instanceof UpperLayerMessage)
+			upperLayer.processEvent(source, message);
+		else if (message instanceof DeathNotification)
 			upperLayer.processEvent(source, message);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
@@ -127,7 +130,7 @@ public class WorkerNode extends Node {
 	}
 
 	private void processKillEvent(Endpoint source, KillEvent message) {
-		super.kill();
+		super.kill(source);
 	}
 
 	private void processGetInfo(Endpoint source, GetInfo message) {

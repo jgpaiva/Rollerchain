@@ -44,7 +44,7 @@ public class Configuration {
 	private static final int MAX_SHUFFLE_SIZE =
 			Configuration.readInt(Configuration.PAR_MAX_SHUFFLE_SIZE, "10");
 	private static final int SHUFFLE_TTL =
-			Configuration.readInt(Configuration.PAR_SHUFFLE_TTL, "15");
+			Configuration.readInt(Configuration.PAR_SHUFFLE_TTL, "10");
 
 	private static final int readInt(String par, String defaultVal) {
 		String temp = Configuration.properties.getProperty(par, defaultVal);

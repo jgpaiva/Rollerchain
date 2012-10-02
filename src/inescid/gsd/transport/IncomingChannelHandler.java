@@ -43,11 +43,12 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 			if (closed)
 				return;
 			closed = true;
+
+			if (connection == null)
+				close();
+			else
+				connection.closeIncoming(this);
 		}
-		if (connection == null)
-			close();
-		else
-			connection.closeIncoming(this);
 	}
 
 	@Override
@@ -59,12 +60,12 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 		synchronized (this) {
 			if (closed)
 				return;
-		}
 
-		if (connection == null)
-			channel.close();
-		else
-			connection.die(e.getCause());
+			if (connection == null)
+				channel.close();
+			else
+				connection.die(e.getCause());
+		}
 	}
 
 	public Channel getChannel() {
@@ -77,20 +78,26 @@ public class IncomingChannelHandler extends SimpleChannelUpstreamHandler {
 		synchronized (this) {
 			if (closed)
 				return;
-		}
 
-		if (e.getMessage() instanceof EndpointInfo) {
-			EndpointInfo message = (EndpointInfo) e.getMessage();
-			connection = connectionManager.createConnection(this, message.endpoint);
-		} else {
-			if (connection == null)
-				ConnectionManager.die(this.getClass().getName() + " Received: " + e.getMessage()
-						+ " and connection was null.");
-			connection.incomingMessage(channel, e);
+			if (e.getMessage() instanceof EndpointInfo) {
+				EndpointInfo message = (EndpointInfo) e.getMessage();
+				connection = connectionManager.createConnection(this, message.endpoint);
+			} else {
+				if (connection == null)
+					ConnectionManager.die(this.getClass().getName() + " Received: " + e.getMessage()
+							+ " and connection was null.");
+				connection.incomingMessage(channel, e);
+			}
 		}
 	}
 
 	public void close() {
-		channel.close();
+		synchronized (this) {
+			if (closed)
+				return;
+
+			channel.close();
+			closed = true;
+		}
 	}
 }
