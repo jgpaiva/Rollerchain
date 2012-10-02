@@ -3,6 +3,7 @@ package inescid.gsd.centralizedrollerchain.application.keyvalue;
 import inescid.gsd.centralizedrollerchain.Configuration;
 import inescid.gsd.centralizedrollerchain.Identifier;
 import inescid.gsd.centralizedrollerchain.StaticGroup;
+import inescid.gsd.centralizedrollerchain.utils.FileOutput;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.utils.Utils;
@@ -21,13 +22,15 @@ public class FiliationManager {
 	private NodeGroupPair lastSentPair;
 
 	private final TreeSet<NodeGroupPair> orderedSites = new TreeSet<NodeGroupPair>();
-	private final TreeMap<Endpoint, NodeGroupPair> aknownSites = new TreeMap<Endpoint, NodeGroupPair>();
-	private final Logger logger = Logger.getLogger(FiliationManager.class.getName());;
+	private final TreeMap<Endpoint, NodeGroupPair> knownSites = new TreeMap<Endpoint, NodeGroupPair>();
+	private final Logger logger = Logger.getLogger(FiliationManager.class.getName());
+	private final FileOutput writer;
 
 	public FiliationManager(KeyValueStore owner) {
 		this.owner = owner;
 		counter = 0;
 		lastSentPair = null;
+		writer = new FileOutput(owner.getEndpoint(), this.getClass());
 	}
 
 	public void nextRound(StaticGroup group, StaticGroup predecessor, StaticGroup successor) {
@@ -38,7 +41,7 @@ public class FiliationManager {
 				choices.addAll(predecessor);
 			if (successor != null)
 				choices.addAll(successor);
-			for (Endpoint it : aknownSites.keySet())
+			for (Endpoint it : knownSites.keySet())
 				choices.add(it);
 
 			Endpoint randDest = Utils.getRandomEl(choices, owner.getEndpoint());
@@ -52,7 +55,7 @@ public class FiliationManager {
 
 		// delete old pointers
 		ArrayList<NodeGroupPair> toRemove = new ArrayList<NodeGroupPair>();
-		for (NodeGroupPair it : aknownSites.values())
+		for (NodeGroupPair it : knownSites.values())
 			if (it.decrTTL() <= 0)
 				toRemove.add(it);
 		if (toRemove.size() > 0) {
@@ -60,7 +63,9 @@ public class FiliationManager {
 				removeEndpoint(it.getEndpoint());
 			logger.log(Level.FINE, "Removed pointers: " + toRemove);
 		}
-		logger.log(Level.INFO, owner.getEndpoint() + " knows " + aknownSites.size() + aknownSites);
+		logger.log(Level.INFO, owner.getEndpoint() + " knows " + knownSites.size() + knownSites);
+		writer.status("known: " + knownSites.size() + " removed:" + toRemove.size() + " known detail:"
+				+ knownSites + " removed detail:" + toRemove);
 	}
 
 	public void processNodeGroupPairList(Endpoint source, NodeGroupPairList message) {
@@ -72,7 +77,7 @@ public class FiliationManager {
 				continue;
 			}
 
-			NodeGroupPair temp = aknownSites.get(newPair.getEndpoint());
+			NodeGroupPair temp = knownSites.get(newPair.getEndpoint());
 			if (temp == null)
 				addEndpoint(newPair);
 			else if (temp.getVersion() < newPair.getVersion()) {
@@ -94,7 +99,7 @@ public class FiliationManager {
 			if (newPair.getEndpoint().equals(owner.getEndpoint()))
 				KeyValueStore.die("my endpoint was in a reply. should never happen");
 
-			NodeGroupPair temp = aknownSites.get(newPair.getEndpoint());
+			NodeGroupPair temp = knownSites.get(newPair.getEndpoint());
 			if (temp == null)
 				addEndpoint(newPair);
 			else if (temp.getVersion() < newPair.getVersion()) {
@@ -138,12 +143,12 @@ public class FiliationManager {
 	}
 
 	private void addEndpoint(NodeGroupPair newPair) {
-		aknownSites.put(newPair.getEndpoint(), newPair);
+		knownSites.put(newPair.getEndpoint(), newPair);
 		orderedSites.add(newPair);
 	}
 
 	private void removeEndpoint(Endpoint it) {
-		NodeGroupPair temp = aknownSites.remove(it);
+		NodeGroupPair temp = knownSites.remove(it);
 		if (temp != null)
 			orderedSites.remove(temp);
 	}

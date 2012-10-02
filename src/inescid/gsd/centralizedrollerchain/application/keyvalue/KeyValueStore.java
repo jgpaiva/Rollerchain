@@ -32,16 +32,16 @@ public class KeyValueStore implements UpperLayer {
 	private static final Logger logger = Logger.getLogger(KeyValueStore.class.getName());
 	private final KeyStorage keys;
 	private final KeyMessageManager keyMessageManager;
-	private final KeyRemovalManager keyRemovalManager;
+	private KeyRemovalManager keyRemovalManager;
 	private final FiliationManager filiationManager;
 
 	public KeyValueStore() {
 		keyMessageManager = new KeyMessageManager();
 		keys = new KeyStorage();
-		keyRemovalManager = new KeyRemovalManager(keys);
 		filiationManager = new FiliationManager(this);
 		owner = null;
 		executor = null;
+		keyRemovalManager = null;
 		KeyValueStore.logger.log(Level.INFO, "Created new KeyValueStore node");
 	}
 
@@ -60,6 +60,7 @@ public class KeyValueStore implements UpperLayer {
 			}
 		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
 		KeyValueStore.logger.log(Level.INFO, "Initialized KeyValueStore");
+		keyRemovalManager = new KeyRemovalManager(keys, owner.getEndpoint());
 	}
 
 	@Override

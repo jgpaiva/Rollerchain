@@ -16,28 +16,32 @@ public class Endpoint implements Comparable<Endpoint>, Serializable {
 	}
 
 	public Endpoint(InetSocketAddress addr) {
-		this.host = addr.getHostName();
-		this.port = addr.getPort();
+		host = addr.getHostName();
+		port = addr.getPort();
 	}
 
 	public boolean equals(Endpoint t) {
-		return this.port == t.port && this.host.equals(t.host);
+		return (port == t.port) && host.equals(t.host);
 	}
 
 	@Override
 	public String toString() {
-		return this.host + ":" + this.port;
+		return host + ":" + port;
 	}
 
 	public SocketAddress getInetAddress() {
-		return new InetSocketAddress(this.host, this.port);
+		return new InetSocketAddress(host, port);
 	}
 
 	@Override
 	public int compareTo(Endpoint o) {
-		if (this.port == o.port)
-			return this.host.compareTo(o.host);
+		if (port == o.port)
+			return host.compareTo(o.host);
 		else
-			return this.port - o.port;
+			return port - o.port;
+	}
+
+	public int getPort() {
+		return port;
 	}
 }
