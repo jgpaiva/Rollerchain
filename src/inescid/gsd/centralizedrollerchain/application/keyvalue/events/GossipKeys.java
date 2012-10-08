@@ -28,4 +28,9 @@ public class GossipKeys extends UpperLayerMessage {
 	public KeyListing getKeyListing() {
 		return keyListing;
 	}
+
+	@Override
+	public String toString() {
+		return super.toString() + " for " + keyListing.size() + " keys";
+	}
 }

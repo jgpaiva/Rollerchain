@@ -12,7 +12,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class KillNode  implements EventReceiver{
+public class KillNode implements EventReceiver {
 	ConnectionManager manager;
 
 	KillNode(Endpoint endpoint) {
@@ -23,7 +23,7 @@ public class KillNode  implements EventReceiver{
 		Logger.getLogger("").setLevel(Level.ALL);
 		KillNode.setHandlerLevel();
 
-		Endpoint myEndpoint = new Endpoint("kalium.gsd.inesc-id.pt", 9090);
+		Endpoint myEndpoint = new Endpoint("kalium.gsd.inesc-id.pt", 9091);
 		KillNode obj = new KillNode(myEndpoint);
 		try {
 			Thread.sleep(2 * 1000); // give some time for initialization
@@ -35,8 +35,18 @@ public class KillNode  implements EventReceiver{
 		for (int it = 0; it < ((9119 - 9090) + 1); it++)
 			toKill.add(new Endpoint("melos", 9090 + it));
 
-		for (Endpoint it : toKill)
+		for (int it = 0; it < ((9119 - 9090) + 1); it++)
+			toKill.add(new Endpoint("lesbos", 9090 + it));
+
+		for (Endpoint it : toKill) {
 			obj.kill(it);
+			System.out.println("killed " + it);
+			try {
+				Thread.sleep(5000);
+			} catch (InterruptedException e) {
+			}
+		}
+		System.out.println("killed all nodes");
 	}
 
 	private void kill(Endpoint toKillEndpoint) {
@@ -48,7 +58,7 @@ public class KillNode  implements EventReceiver{
 		System.out.println(message);
 		if (message instanceof DeathNotification) {
 			((DeathNotification) message).getDetails().printStackTrace(System.err);
-			System.out.println(((DeathNotification)message).getDetails());
+			System.out.println(((DeathNotification) message).getDetails());
 		}
 	}
 

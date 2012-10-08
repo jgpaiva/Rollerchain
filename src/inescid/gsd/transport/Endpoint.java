@@ -20,8 +20,14 @@ public class Endpoint implements Comparable<Endpoint>, Serializable {
 		port = addr.getPort();
 	}
 
-	public boolean equals(Endpoint t) {
-		return (port == t.port) && host.equals(t.host);
+	@Override
+	public boolean equals(Object t) {
+		return (t instanceof Endpoint) && (port == ((Endpoint) t).port) && host.equals(((Endpoint) t).host);
+	}
+
+	@Override
+	public int hashCode() {
+		return host.hashCode() + port;
 	}
 
 	@Override

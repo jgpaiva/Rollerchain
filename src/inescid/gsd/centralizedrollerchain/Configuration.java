@@ -26,7 +26,7 @@ public class Configuration {
 	private static final int KEEP_ALIVE_INTERVAL =
 			Configuration.readInt(Configuration.PAR_KEEP_ALIVE_INTERVAL, "30");
 	private static final int N_KEYS =
-			Configuration.readInt(Configuration.PAR_N_KEYS, "100");
+			Configuration.readInt(Configuration.PAR_N_KEYS, "10000");
 	private static final int KEYS_RANDOM_SEED =
 			Configuration.readInt(Configuration.PAR_KEYS_RANDOM_SEED, "100");
 	private static final int MIN_KEY_SIZE =

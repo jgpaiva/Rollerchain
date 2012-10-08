@@ -12,6 +12,7 @@ import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
+import inescid.gsd.centralizedrollerchain.utils.FileOutput;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
 
@@ -23,6 +24,8 @@ public class WorkerNode extends Node {
 	private final WorkerNodeInternalState s = new WorkerNodeInternalState();
 
 	private final UpperLayer upperLayer;
+
+	private final FileOutput writer;
 
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
 		super(endpoint);
@@ -39,7 +42,13 @@ public class WorkerNode extends Node {
 			public void init(Node n) {
 				// discard init
 			}
+
+			@Override
+			public void nextRound() {
+				// discard next round
+			}
 		};
+		writer = new FileOutput(endpoint, this.getClass());
 	}
 
 	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, UpperLayer upperLayer) {
@@ -48,6 +57,7 @@ public class WorkerNode extends Node {
 		if (masterEndpoint == null)
 			Node.die("Master endpoint is null");
 		this.upperLayer = upperLayer;
+		writer = new FileOutput(endpoint, this.getClass());
 	}
 
 	@Override
@@ -78,6 +88,12 @@ public class WorkerNode extends Node {
 		sendMessage(masterEndpoint, new WorkerInit());
 	}
 
+	@Override
+	public void nextRound() {
+		upperLayer.nextRound();
+		writer.status("group: " + getGroup() + " pred:" + getPredecessor() + " succ:" + getSuccessor());
+	}
+
 	private void processSetNeighbours(Endpoint source, SetNeighbours setNeighbours) {
 		StaticGroup oldGroup = s.getGroup();
 		s.setGroup(setNeighbours.getGroup());
@@ -94,39 +110,76 @@ public class WorkerNode extends Node {
 			upperLayer.processEvent(source,
 					new GroupUpdate(oldGroup, setNeighbours.getGroup(), s.getPredecessorID()));
 		}
+		upperLayer.processEvent(source, new GetInfo());
 	}
 
 	private void processDivide(Endpoint source, Divide message) {
+		testIntegrity();
 		StaticGroup oldGroup = s.getGroup();
+
 		if (message.getNewGroup().contains(endpoint)) {
 			s.setGroup(message.getNewGroup());
-			s.setPredecessorGroup(message.getOldGroup());
-			if (s.getSuccessorGroup() == null)
-				s.setSuccessorGroup(message.getOldGroup());
-		} else {
-			s.setGroup(message.getOldGroup());
-			s.setSuccessorGroup(message.getNewGroup());
+			s.setSuccessorGroup(message.getOldGroup());
 			if (s.getPredecessorGroup() == null)
-				s.setPredecessorGroup(message.getNewGroup());
+				s.setPredecessorGroup(message.getOldGroup());
+		} else {
+			if (!message.getOldGroup().contains(endpoint))
+				Node.die("Should never happen: " + endpoint + " not in:" + message);
+			s.setGroup(message.getOldGroup());
+			s.setPredecessorGroup(message.getNewGroup());
+			if (s.getSuccessorGroup() == null)
+				s.setSuccessorGroup(message.getNewGroup());
 		}
+
 		upperLayer.processEvent(source,
 				new DivideIDUpdate(oldGroup, s.getGroup(), s.getPredecessorGroup()));
+		upperLayer.processEvent(source, new GetInfo());
+
+		Node.logger.log(Level.FINEST, "Divided from: " + oldGroup + " to " + getGroup());
+		testIntegrity();
+	}
+
+	public void testIntegrity() {
+		if ((getPredecessorID() != null) && (getSuccessorID() != null)
+				&& !(getSuccessorID().equals(getPredecessorID()))
+				&& !Identifier.isBetween(getGroup().getID(), getPredecessorID(), getSuccessorID()))
+			Node.die(getGroup().getID() + " is not between " + getPredecessorID() + " and "
+					+ getSuccessorID());
 	}
 
 	private void processMerge(Endpoint source, Merge message) {
+		testIntegrity();
 		StaticGroup oldGroup = s.getGroup();
+
 		if (message.getSmallGroup().contains(endpoint)) {
 			s.setSuccessorGroup(message.getSuccessorGroup());
+			if ((s.getPredecessorID() != null) && (message.getPredecessorGroup() != null)
+					&& !s.getPredecessorID().equals(message.getPredecessorGroup().getID()))
+				Node.die("predecessors differ:" + s.getPredecessorID() + " "
+						+ message.getPredecessorGroup().getID());
 			if (s.getSuccessorGroup() == null)
 				s.setPredecessorGroup(null);
 		}
 		else if (message.getLargeGroup().contains(endpoint)) {
 			s.setPredecessorGroup(message.getPredecessorGroup());
+			if ((s.getSuccessorID() != null) && (message.getSuccessorGroup() != null)
+					&& !s.getSuccessorID().equals(message.getSuccessorGroup().getID()))
+				Node.die("successors differ:" + s.getSuccessorID() + " "
+						+ message.getSuccessorGroup().getID());
 			if (s.getPredecessorGroup() == null)
 				s.setSuccessorGroup(null);
-		}
+		} else
+			Node.die("should never be reached");
+
+		StaticGroup tempGroup = message.getLargeGroup();
+		tempGroup.addAll(message.getSmallGroup());
+		s.setGroup(tempGroup);
+
 		upperLayer.processEvent(source,
 				new MergeIDUpdate(oldGroup, s.getGroup(), s.getPredecessorGroup()));
+		upperLayer.processEvent(source, new GetInfo());
+
+		testIntegrity();
 	}
 
 	private void processKillEvent(Endpoint source, KillEvent message) {
@@ -144,6 +197,10 @@ public class WorkerNode extends Node {
 
 	public Identifier getPredecessorID() {
 		return s.getPredecessorID();
+	}
+
+	public Identifier getSuccessorID() {
+		return s.getSuccessorID();
 	}
 
 	public StaticGroup getPredecessor() {

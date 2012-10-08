@@ -10,12 +10,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 
-public class KeyMessageManager {
+public class KeyMessageMngr {
 	private int allKeysRequested;
 	private final ArrayList<HashSet<UniqueIDMessage>> messages;
 	private final HashMap<Long, UniqueIDMessage> messageMap;
 
-	public KeyMessageManager() {
+	public KeyMessageMngr() {
 		allKeysRequested = 0;
 		messages = new ArrayList<HashSet<UniqueIDMessage>>();
 		for (int it = 0; it < Configuration.getRoundsToKeepMessages(); it++)

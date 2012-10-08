@@ -11,13 +11,13 @@ import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class KeyRemovalManager {
+public class KeyRemovalMngr {
 	private final KeyStorage keys;
 	private final ArrayList<TreeSet<Key>> toRemove;
 	private final FileOutput writer;
-	private static final Logger logger = Logger.getLogger(KeyRemovalManager.class.getName());
+	private static final Logger logger = Logger.getLogger(KeyRemovalMngr.class.getName());
 
-	public KeyRemovalManager(KeyStorage keys, Endpoint e) {
+	public KeyRemovalMngr(KeyStorage keys, Endpoint e) {
 		this.keys = keys;
 		toRemove = new ArrayList<TreeSet<Key>>();
 		for (int it = 0; it < Configuration.getRoundsToKeepKeys(); it++)
@@ -35,7 +35,7 @@ public class KeyRemovalManager {
 		}
 
 		if (toRemoveThisRound.size() >= keys.size())
-			KeyRemovalManager.logger.log(Level.WARNING,
+			KeyRemovalMngr.logger.log(Level.WARNING,
 					"Scheduling all keys for deletion? toRemoveThisRound:"
 							+ toRemoveThisRound + " keys:" + keys + " lowerID: " + lowerID + " higherID" + higherID);
 
@@ -59,17 +59,17 @@ public class KeyRemovalManager {
 			String tmp = "Removed " + nowRemoving.size() + ". Has " + keys.size() + " keys. ";
 
 			if (toRemoveThisRound.size() > 0)
-				KeyRemovalManager.logger.log(Level.INFO, tmp + "Scheduled " + toRemoveThisRound.size()
+				KeyRemovalMngr.logger.log(Level.INFO, tmp + "Scheduled " + toRemoveThisRound.size()
 						+ " for removal.");
 			else
-				KeyRemovalManager.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
+				KeyRemovalMngr.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
 		} else {
 			String tmp = "Did not remove. Has " + keys.size() + " keys. ";
 			if (toRemoveThisRound.size() > 0)
-				KeyRemovalManager.logger.log(Level.FINE, tmp + "Scheduled " + toRemoveThisRound.size()
+				KeyRemovalMngr.logger.log(Level.FINE, tmp + "Scheduled " + toRemoveThisRound.size()
 						+ " for removal.");
 			else
-				KeyRemovalManager.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
+				KeyRemovalMngr.logger.log(Level.FINER, tmp + "Did not schedule for removal. ");
 		}
 	}
 }

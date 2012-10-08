@@ -1,5 +1,6 @@
 package inescid.gsd.utils;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -68,6 +69,14 @@ public class Utils {
 
 	public static Iterable<Integer> range(Collection<?> upTo) {
 		return new MyIterable(upTo.size());
+	}
+
+	public static String stackTraceFormat() {
+		List<StackTraceElement> tempList = Arrays.asList(Thread.currentThread().getStackTrace());
+		String toReturn = "";
+		for (StackTraceElement it : tempList)
+			toReturn += it + "\n";
+		return toReturn;
 	}
 }
 

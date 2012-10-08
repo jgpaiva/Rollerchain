@@ -8,7 +8,7 @@ public class Identifier extends BigInteger {
 	private static final BigInteger TWO = BigInteger.ONE.add(BigInteger.ONE);
 	private static final BigInteger RINGSIZE = new Identifier(BigInteger.ONE
 			.add(BigInteger.ONE).pow(Configuration.getIDSize()));
-	public static final Identifier MIDDLE_POINT = new Identifier(Identifier.RINGSIZE.divide(BigInteger.ONE
+	private static final Identifier MIDDLE_POINT = new Identifier(Identifier.RINGSIZE.divide(BigInteger.ONE
 			.add(BigInteger.ONE)));
 	private static final long serialVersionUID = 4305665313496090598L;
 
@@ -52,7 +52,18 @@ public class Identifier extends BigInteger {
 	}
 
 	public static Identifier calculateMiddlePoint(Identifier id, Identifier predecessor) {
+		if (predecessor == null)
+			return Identifier.MIDDLE_POINT;
 		BigInteger ret = id.add(predecessor).divide(Identifier.TWO).mod(Identifier.RINGSIZE);
 		return new Identifier(ret);
+	}
+
+	public static boolean isBetween(Identifier id, Identifier intervalStart,
+			Identifier intervalEnd) {
+		if (intervalStart.compareTo(intervalEnd) <= 0)
+			return (id.compareTo(intervalStart) > 0)
+					&& (id.compareTo(intervalEnd) <= 0);
+		// else
+		return (id.compareTo(intervalStart) > 0) || (id.compareTo(intervalEnd) < 0);
 	}
 }

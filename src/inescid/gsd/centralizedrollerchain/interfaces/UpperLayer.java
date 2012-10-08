@@ -5,4 +5,6 @@ import inescid.gsd.transport.interfaces.EventReceiver;
 
 public interface UpperLayer extends EventReceiver {
 	public void init(Node n);
+
+	public void nextRound();
 }

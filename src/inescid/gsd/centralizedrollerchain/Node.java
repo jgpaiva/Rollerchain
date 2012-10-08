@@ -15,6 +15,7 @@ import inescid.gsd.transport.interfaces.EventReceiver;
 import java.util.concurrent.Executors;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -45,9 +46,21 @@ public abstract class Node implements EventReceiver {
 	 */
 	public void init() {
 		executor = Executors.newScheduledThreadPool(1, new NamedThreadFactory("NodeThreadPool_"));
+		executor.scheduleAtFixedRate(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					nextRound();
+				} catch (Throwable t) {
+					Node.die(t);
+				}
+			}
+		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
 	}
 
 	protected abstract void processEventInternal(Endpoint fst, Object snd);
+
+	protected abstract void nextRound();
 
 	@Override
 	public void processEvent(Endpoint source, Object message) {
@@ -55,11 +68,10 @@ public abstract class Node implements EventReceiver {
 			Node.die("Node not initialized!");
 
 		if (message instanceof InstantDeath) {
-			Node.logger.log(Level.SEVERE, "Now dying. Received " + message + " from " + source);
+			Node.logger.log(Level.INFO, "Now dying. Received " + message + " from " + source);
 			System.exit(-1);
 		}
 
-		Node.logger.log(Level.FINEST, "Queuing event from: " + source + " / " + message);
 		if (message instanceof Event)
 			queue.add(new PriorityPair<Endpoint, Object>(source, message, 0));
 		else if (message instanceof UpperLayerMessage)
@@ -80,7 +92,6 @@ public abstract class Node implements EventReceiver {
 				}
 			}
 		});
-		Node.logger.log(Level.FINEST, "Queued event from: " + source + " / " + message);
 	}
 
 	private void takeFromQueue() {
@@ -115,7 +126,7 @@ public abstract class Node implements EventReceiver {
 		connectionManager.shutdown();
 		queue.clear();
 		executor.shutdownNow();
-		Node.logger.log(Level.SEVERE, "node " + endpoint + " was killed by " + source);
+		Node.logger.log(Level.INFO, "node " + endpoint + " was killed by " + source);
 	}
 
 	public static void die(String string) {

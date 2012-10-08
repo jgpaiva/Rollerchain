@@ -21,7 +21,6 @@ import inescid.gsd.transport.events.DeathNotification;
 import inescid.gsd.utils.Utils;
 
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -31,14 +30,13 @@ public class KeyValueStore implements UpperLayer {
 	private ScheduledExecutorService executor;
 	private static final Logger logger = Logger.getLogger(KeyValueStore.class.getName());
 	private final KeyStorage keys;
-	private final KeyMessageManager keyMessageManager;
-	private KeyRemovalManager keyRemovalManager;
-	private final FiliationManager filiationManager;
+	private final KeyMessageMngr keyMessageManager;
+	private KeyRemovalMngr keyRemovalManager;
+	private FiliationMngr filiationManager;
 
 	public KeyValueStore() {
-		keyMessageManager = new KeyMessageManager();
+		keyMessageManager = new KeyMessageMngr();
 		keys = new KeyStorage();
-		filiationManager = new FiliationManager(this);
 		owner = null;
 		executor = null;
 		keyRemovalManager = null;
@@ -49,18 +47,9 @@ public class KeyValueStore implements UpperLayer {
 	public void init(Node owner) {
 		this.owner = (WorkerNode) owner;
 		executor = owner.getExecutor();
-		executor.scheduleAtFixedRate(new Runnable() {
-			@Override
-			public void run() {
-				try {
-					nextRound();
-				} catch (Throwable t) {
-					KeyValueStore.die(t);
-				}
-			}
-		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
+		filiationManager = new FiliationMngr(this);
 		KeyValueStore.logger.log(Level.INFO, "Initialized KeyValueStore");
-		keyRemovalManager = new KeyRemovalManager(keys, owner.getEndpoint());
+		keyRemovalManager = new KeyRemovalMngr(keys, owner.getEndpoint());
 	}
 
 	@Override
@@ -151,7 +140,8 @@ public class KeyValueStore implements UpperLayer {
 	 * Cyclic communication step. Repeated every
 	 * {@link Configuration#getRoundTime()}.
 	 */
-	private void nextRound() {
+	@Override
+	public void nextRound() {
 		KeyValueStore.logger.log(Level.INFO, owner.getEndpoint() + " Entering nextRound()");
 		StaticGroup myGroup = owner.getGroup();
 		Identifier predecessorID = owner.getPredecessorID();
@@ -217,7 +207,7 @@ public class KeyValueStore implements UpperLayer {
 	}
 
 	public Endpoint getEndpoint() {
-		if(owner == null)
+		if (owner == null)
 			KeyValueStore.die("Shoule never happen");
 		return owner.getEndpoint();
 	}

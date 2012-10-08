@@ -102,6 +102,10 @@ public class KeyStorage implements Iterable<Key> {
 		keys.addAll(container.getKeys());
 	}
 
+	public void addAll(KeyStorage tmp) {
+		keys.addAll(tmp.getRawKeys());
+	}
+
 	public KeyListing getKeyListing() {
 		return new KeyListing(keys);
 	}
@@ -139,8 +143,13 @@ public class KeyStorage implements Iterable<Key> {
 	}
 
 	public KeyContainer get(KeyListing toGet) {
+		@SuppressWarnings("unchecked")
 		TreeSet<Key> temp = (TreeSet<Key>) keys.clone();
 		temp.retainAll(toGet.asList());
 		return new KeyContainer(temp);
+	}
+
+	public TreeSet<Key> getRawKeys() {
+		return keys;
 	}
 }

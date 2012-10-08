@@ -7,6 +7,7 @@ import java.io.Serializable;
 public class Key implements Serializable, Comparable<Key> {
 	private static final long serialVersionUID = -4812188019768566997L;
 	private final int keySize;
+
 	private final Identifier id;
 
 	public Key(Identifier id, int currentKeySize) {
@@ -39,5 +40,9 @@ public class Key implements Serializable, Comparable<Key> {
 
 	public Identifier getID() {
 		return id;
+	}
+
+	public int getKeySize() {
+		return keySize;
 	}
 }

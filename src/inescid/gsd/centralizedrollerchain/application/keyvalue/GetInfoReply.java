@@ -13,4 +13,9 @@ public class GetInfoReply extends UpperLayerMessage {
 	public Key[] getKeys() {
 		return keys;
 	}
+
+	@Override
+	public String toString() {
+		return super.toString() + " for " + keys.length + " keys";
+	}
 }

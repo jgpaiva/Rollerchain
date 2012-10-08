@@ -26,4 +26,8 @@ public class KeyListing implements Serializable, Iterable<Key> {
 	public List<Key> asList() {
 		return Arrays.asList(listing);
 	}
+
+	public int size() {
+		return listing.length;
+	}
 }
