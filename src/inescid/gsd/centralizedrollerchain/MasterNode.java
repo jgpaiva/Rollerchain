@@ -5,11 +5,15 @@ import inescid.gsd.centralizedrollerchain.application.keyvalue.Key;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.KeyStorage;
 import inescid.gsd.centralizedrollerchain.events.Divide;
 import inescid.gsd.centralizedrollerchain.events.GetInfo;
+import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
+import inescid.gsd.centralizedrollerchain.events.UpdatePredecessor;
+import inescid.gsd.centralizedrollerchain.events.UpdateSuccessor;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.centralizedrollerchain.utils.FileOutput;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
+import inescid.gsd.utils.Utils;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -50,7 +54,7 @@ public class MasterNode extends Node {
 		else
 			Node.die("Received unknown event: " + object);
 		Node.logger.log(Level.FINEST,
-				"active nodes:" + s.getWorkerList().size() + "     list: " + s.getWorkerList());
+				"active nodes:" + s.getWorkerList().size() + "     list: " + s.getWorkerList().keySet());
 	}
 
 	@Override
@@ -82,8 +86,33 @@ public class MasterNode extends Node {
 		if (s.addToWorkerList(source, toJoin) != null)
 			Node.die("worker set contains " + source + " associated with group: " + toJoin);
 
+		notifySuccessor(toJoin.getStaticGroup(), toJoin.getID(), toJoin.getSuccessor());
+		notifyPredecessor(toJoin.getStaticGroup(), toJoin.getID(), toJoin.getPredecessor());
+
 		if (toJoin.size() > MasterNode.MAX_REPLICATION)
 			doDivision(toJoin);
+	}
+
+	private void notifySuccessor(StaticGroup newGroup, Identifier oldID, StaticGroup toNotify) {
+		if (toNotify != null) {
+			if (Utils.testEquals(toNotify.getID(), oldID))
+				Node.die("should never happen");
+			if (Utils.testEquals(toNotify.getID(), newGroup.getID()))
+				Node.die("should never happen");
+			for (Endpoint it : toNotify)
+				sendMessage(it, new UpdatePredecessor(newGroup, oldID));
+		}
+	}
+
+	private void notifyPredecessor(StaticGroup newGroup, Identifier oldID, StaticGroup toNotify) {
+		if (toNotify != null) {
+			if (Utils.testEquals(toNotify.getID(), oldID))
+				Node.die("should never happen");
+			if (Utils.testEquals(toNotify.getID(), newGroup.getID()))
+				Node.die("should never happen");
+			for (Endpoint it : toNotify)
+				sendMessage(it, new UpdateSuccessor(newGroup, oldID));
+		}
 	}
 
 	private void doDivision(Group toJoin) {
@@ -103,12 +132,21 @@ public class MasterNode extends Node {
 		}
 
 		Group newGroup = createGroup(newIdentifier, new TreeSet<Endpoint>());
+		Identifier oldPredID = toJoin.getPredecessorID();
+		Identifier oldSuccID = toJoin.getSuccessorID();
 		toJoin.divide(newGroup);
 
+		Divide divideMsg = new Divide(newGroup.getStaticGroup(), toJoin.getStaticGroup(),
+				newGroup.getPredecessor(), toJoin.getSuccessor());
 		for (Endpoint it : newGroup.getFinger())
-			sendMessage(it, new Divide(newGroup.getStaticGroup(), toJoin.getStaticGroup()));
+			sendMessage(it, divideMsg);
 		for (Endpoint it : toJoin.getFinger())
-			sendMessage(it, new Divide(newGroup.getStaticGroup(), toJoin.getStaticGroup()));
+			sendMessage(it, divideMsg);
+
+		if (oldPredID != null)
+			notifySuccessor(toJoin.getStaticGroup(), toJoin.getID(), toJoin.getSuccessor());
+		if (oldSuccID != null)
+			notifyPredecessor(newGroup.getStaticGroup(), toJoin.getID(), newGroup.getPredecessor());
 
 		Node.logger.log(Level.INFO, "divided into: " + newGroup + " and " + toJoin);
 	}
@@ -162,19 +200,26 @@ public class MasterNode extends Node {
 	}
 
 	private void processDeathNotification(Endpoint source, DeathNotification object) {
-		Node.logger.finest("removing worker from list");
 		Group oldGroup = s.removeWorkerFromList(source);
-		Node.logger.finest("removed worker from list");
 		if (oldGroup != null) {
-			Node.logger.finest("removing node from oldGroup");
 			oldGroup.removeNode(source);
-			Node.logger.finest("removed node from oldGroup");
-			if (oldGroup.size() < MasterNode.MIN_REPLICATION) {
-				Node.logger.finest("merging oldGroup");
-				oldGroup.merge();
-				Node.logger.log(Level.INFO, "merged: " + oldGroup + " into " + oldGroup.getSuccessor());
-			}
+			if (oldGroup.size() < MasterNode.MIN_REPLICATION)
+				doMerge(oldGroup);
 		}
+	}
+
+	private void doMerge(Group oldGroup) {
+		StaticGroup smallGroup = oldGroup.getStaticGroup();
+		StaticGroup successorGroup = oldGroup.getSuccessor();
+		Group res = oldGroup.merge();
+		if (res != null) {
+			for (Endpoint it : res.getFinger())
+				sendMessage(it, new Merge(smallGroup, successorGroup,
+						res.getPredecessor(), res.getSuccessor()));
+			notifySuccessor(res.getStaticGroup(), res.getID(), res.getSuccessor());
+			notifyPredecessor(res.getStaticGroup(), oldGroup.getID(), res.getPredecessor());
+		}
+		Node.logger.log(Level.INFO, "merged: " + oldGroup + " into " + oldGroup.getSuccessor());
 	}
 
 	private Group createSeedGroup(Endpoint node) {

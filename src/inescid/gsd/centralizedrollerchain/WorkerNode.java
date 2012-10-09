@@ -8,6 +8,8 @@ import inescid.gsd.centralizedrollerchain.events.JoinedNetwork;
 import inescid.gsd.centralizedrollerchain.events.Merge;
 import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
+import inescid.gsd.centralizedrollerchain.events.UpdatePredecessor;
+import inescid.gsd.centralizedrollerchain.events.UpdateSuccessor;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
@@ -15,6 +17,7 @@ import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
 import inescid.gsd.centralizedrollerchain.utils.FileOutput;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
+import inescid.gsd.utils.Utils;
 
 import java.util.logging.Level;
 
@@ -77,6 +80,10 @@ public class WorkerNode extends Node {
 			upperLayer.processEvent(source, message);
 		else if (message instanceof DeathNotification)
 			upperLayer.processEvent(source, message);
+		else if (message instanceof UpdatePredecessor)
+			processUpdatePredecessor(source, (UpdatePredecessor) message);
+		else if (message instanceof UpdateSuccessor)
+			processUpdateSuccessor(source, (UpdateSuccessor) message);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
 	}
@@ -122,6 +129,11 @@ public class WorkerNode extends Node {
 			s.setSuccessorGroup(message.getOldGroup());
 			if (s.getPredecessorGroup() == null)
 				s.setPredecessorGroup(message.getOldGroup());
+
+			if ((s.getPredecessorID() != null) && (message.getPredecessor() != null)
+					&& !s.getPredecessorID().equals(message.getPredecessor().getID()))
+				Node.die("for group " + getGroup() + "predecessors differ:" + s.getPredecessorID() + " "
+						+ message.getPredecessor().getID());
 		} else {
 			if (!message.getOldGroup().contains(endpoint))
 				Node.die("Should never happen: " + endpoint + " not in:" + message);
@@ -129,6 +141,11 @@ public class WorkerNode extends Node {
 			s.setPredecessorGroup(message.getNewGroup());
 			if (s.getSuccessorGroup() == null)
 				s.setSuccessorGroup(message.getNewGroup());
+
+			if ((s.getSuccessorID() != null) && (message.getSuccessor() != null)
+					&& !s.getSuccessorID().equals(message.getSuccessor().getID()))
+				Node.die("for group " + getGroup() + "successors differ:" + s.getSuccessorID() + " "
+						+ message.getSuccessor().getID());
 		}
 
 		upperLayer.processEvent(source,
@@ -155,7 +172,7 @@ public class WorkerNode extends Node {
 			s.setSuccessorGroup(message.getSuccessorGroup());
 			if ((s.getPredecessorID() != null) && (message.getPredecessorGroup() != null)
 					&& !s.getPredecessorID().equals(message.getPredecessorGroup().getID()))
-				Node.die("predecessors differ:" + s.getPredecessorID() + " "
+				Node.die("for group " + oldGroup + "predecessors differ:" + s.getPredecessorID() + " "
 						+ message.getPredecessorGroup().getID());
 			if (s.getSuccessorGroup() == null)
 				s.setPredecessorGroup(null);
@@ -164,7 +181,7 @@ public class WorkerNode extends Node {
 			s.setPredecessorGroup(message.getPredecessorGroup());
 			if ((s.getSuccessorID() != null) && (message.getSuccessorGroup() != null)
 					&& !s.getSuccessorID().equals(message.getSuccessorGroup().getID()))
-				Node.die("successors differ:" + s.getSuccessorID() + " "
+				Node.die("for group " + oldGroup + " successors differ:" + s.getSuccessorID() + " "
 						+ message.getSuccessorGroup().getID());
 			if (s.getPredecessorGroup() == null)
 				s.setSuccessorGroup(null);
@@ -189,6 +206,18 @@ public class WorkerNode extends Node {
 	private void processGetInfo(Endpoint source, GetInfo message) {
 		// I have no info to return
 		upperLayer.processEvent(source, message);
+	}
+
+	private void processUpdateSuccessor(Endpoint source, UpdateSuccessor message) {
+		if (!Utils.testEquals(getSuccessorID(), message.getOldGroup()))
+			Node.die("successor " + getSuccessorID() + " != " + message.getOldGroup());
+		s.setSuccessorGroup(message.getNewGroup());
+	}
+
+	private void processUpdatePredecessor(Endpoint source, UpdatePredecessor message) {
+		if (!Utils.testEquals(getPredecessorID(), message.getOldGroup()))
+			Node.die("predecessor " + getPredecessorID() + " != " + message.getOldGroup());
+		s.setPredecessorGroup(message.getNewGroup());
 	}
 
 	public StaticGroup getGroup() {

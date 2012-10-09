@@ -2,8 +2,6 @@ package inescid.gsd.centralizedrollerchain;
 
 import inescid.gsd.centralizedrollerchain.application.keyvalue.KeyStorage;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.KeyValueStore;
-import inescid.gsd.centralizedrollerchain.events.Merge;
-import inescid.gsd.centralizedrollerchain.interfaces.Event;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.utils.Utils;
 
@@ -47,13 +45,13 @@ public class Group {
 		this.schedule = schedule;
 	}
 
-	void merge() {
+	Group merge() {
 		if (owner.s.getAllGroupsSize() == 1)
-			return;
+			return null;
 		assert (successor != null);
 
-		StaticGroup smallGroup = getStaticGroup();
-		StaticGroup successorGroup = successor.getStaticGroup();
+		Group.testIntegrity(this);
+		Group.testIntegrity(successor);
 
 		owner.s.removeFromAllGroups(this);
 		owner.moveAllFrom(this, successor, finger);
@@ -71,11 +69,11 @@ public class Group {
 			predecessor.successor = successor;
 			successor.predecessor = predecessor;
 		}
-		for (Endpoint it : successor.finger)
-			sendMessage(it, new Merge(smallGroup, successorGroup,
-					successor.getPredecessor(), successor.getSuccessor()));
-
 		successor.getKeys().addAll(keys);
+
+		Group.testIntegrity(successor);
+
+		return successor;
 	}
 
 	void divide(Group newGroup) {
@@ -139,10 +137,6 @@ public class Group {
 			Node.die("Endpoint " + source + " was not in finger!" + this);
 	}
 
-	private void sendMessage(Endpoint dest, Event message) {
-		owner.sendMessage(dest, message);
-	}
-
 	private void cancelSchedule() {
 		if (getFinger().size() > 0) {
 			Node.die("canceling a schedule for a group with nodes: + this");
@@ -197,7 +191,7 @@ public class Group {
 		return getPredecessor() != null ? getPredecessor().getID() : null;
 	}
 
-	private Identifier getSuccessorID() {
+	Identifier getSuccessorID() {
 		return getSuccessor() != null ? getSuccessor().getID() : null;
 	}
 }
