@@ -26,7 +26,7 @@ public abstract class Node implements EventReceiver {
 	// This node's endpoint
 	protected final Endpoint endpoint;
 
-	protected ScheduledExecutorService executor;
+	private ScheduledExecutorService executor;
 
 	// Queue for the objects received from TCP
 	private final PriorityBlockingQueue<PriorityPair<Endpoint, Object>> queue = new PriorityBlockingQueue<PriorityPair<Endpoint, Object>>();
@@ -58,7 +58,7 @@ public abstract class Node implements EventReceiver {
 		}, Configuration.getRoundTime(), Configuration.getRoundTime(), TimeUnit.SECONDS);
 	}
 
-	protected abstract void processEventInternal(Endpoint fst, Object snd);
+	protected abstract void processEventInternal(Endpoint source, Object msg);
 
 	protected abstract void nextRound();
 
@@ -111,6 +111,10 @@ public abstract class Node implements EventReceiver {
 	}
 
 	public void sendMessage(Endpoint dest, Event message) {
+		sendObject(dest, message);
+	}
+
+	public void sendObject(Endpoint dest, Object message) {
 		if (dest == null)
 			Node.die("Endpoint was null");
 

@@ -232,7 +232,7 @@ public class MasterNode extends Node {
 	private Group createGroup(Identifier id, TreeSet<Endpoint> setNew) {
 		Group toReturn = new Group(this, id, setNew);
 		s.addToAllGroups(toReturn);
-		ScheduledFuture<?> schedule = executor.scheduleAtFixedRate(new CheckGroupConnections(toReturn),
+		ScheduledFuture<?> schedule = getExecutor().scheduleAtFixedRate(new CheckGroupConnections(toReturn),
 				MasterNode.KEEP_ALIVE_INTERVAL, MasterNode.KEEP_ALIVE_INTERVAL, TimeUnit.SECONDS);
 		toReturn.setSchedule(schedule);
 		return toReturn;

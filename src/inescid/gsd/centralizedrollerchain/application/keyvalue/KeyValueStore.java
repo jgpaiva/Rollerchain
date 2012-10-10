@@ -175,7 +175,8 @@ public class KeyValueStore implements UpperLayer {
 
 		keyMessageManager.removeRequestedKeys(otherKeys);
 		otherKeys.removeAll(keys);
-		otherKeys.filter(owner.getGroup(), owner.getPredecessorID());
+		if (owner.getPredecessorID() != null)
+			otherKeys.filter(owner.getGroup(), owner.getPredecessorID());
 
 		if (otherKeys.size() > 0) {
 			KeyListing toRequest = otherKeys.getKeyListing();

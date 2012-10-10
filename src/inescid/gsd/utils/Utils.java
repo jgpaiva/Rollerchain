@@ -82,6 +82,14 @@ public class Utils {
 	public static boolean testEquals(Object obj1, Object obj2) {
 		return obj1 == null ? obj2 == null : (obj2 != null) && obj1.equals(obj2);
 	}
+
+	public static void threadSleep(int seconds) {
+		try {
+			Thread.sleep(seconds * 1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
 }
 
 class MyIterable implements Iterable<Integer> {
