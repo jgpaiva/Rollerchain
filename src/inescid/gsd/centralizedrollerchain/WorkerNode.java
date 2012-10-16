@@ -78,14 +78,20 @@ public class WorkerNode extends Node {
 			processGetInfo(source, (GetInfo) message);
 		else if (message instanceof UpperLayerMessage)
 			upperLayer.processEvent(source, message);
-		else if (message instanceof DeathNotification)
+		else if (message instanceof DeathNotification) {
+			processDeathNotification(source, message);
 			upperLayer.processEvent(source, message);
-		else if (message instanceof UpdatePredecessor)
+		} else if (message instanceof UpdatePredecessor)
 			processUpdatePredecessor(source, (UpdatePredecessor) message);
 		else if (message instanceof UpdateSuccessor)
 			processUpdateSuccessor(source, (UpdateSuccessor) message);
 		else
 			Node.logger.log(Level.SEVERE, "Received unknown event: " + message);
+	}
+
+	private void processDeathNotification(Endpoint source, Object message) {
+		if (source.equals(masterEndpoint))
+			Node.die("Master is unreachable!");
 	}
 
 	@Override

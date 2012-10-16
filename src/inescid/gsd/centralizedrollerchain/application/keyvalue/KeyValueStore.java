@@ -133,7 +133,8 @@ public class KeyValueStore implements UpperLayer {
 				+ owner.getGroup().getID() + " predID:" + owner.getPredecessorID());
 
 		sendMessage(source, new GetInfoReply(keys.getKeys(owner.getPredecessorID(), owner
-				.getGroup().getID()).getKeys().toArray(new Key[0])));
+				.getGroup().getID()).getKeys().toArray(new Key[0]), owner.getGroup(), owner.getPredecessor(),
+				owner.getSuccessor()));
 	}
 
 	/**
@@ -144,9 +145,12 @@ public class KeyValueStore implements UpperLayer {
 	public void nextRound() {
 		KeyValueStore.logger.log(Level.INFO, owner.getEndpoint() + " Entering nextRound()");
 		StaticGroup myGroup = owner.getGroup();
+		if (myGroup == null)
+			return;
+
 		Identifier predecessorID = owner.getPredecessorID();
 
-		filiationManager.nextRound(owner.getGroup(), owner.getPredecessor(), owner.getSuccessor());
+		filiationManager.nextRound(myGroup, owner.getPredecessor(), owner.getSuccessor());
 
 		if (myGroup.getID() != null) {
 			if (predecessorID != null)

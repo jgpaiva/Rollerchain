@@ -10,6 +10,8 @@ import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.UpdatePredecessor;
 import inescid.gsd.centralizedrollerchain.events.UpdateSuccessor;
 import inescid.gsd.centralizedrollerchain.events.WorkerInit;
+import inescid.gsd.centralizedrollerchain.internalevents.GetNodeList;
+import inescid.gsd.centralizedrollerchain.internalevents.GetNodeListReply;
 import inescid.gsd.centralizedrollerchain.utils.FileOutput;
 import inescid.gsd.transport.Endpoint;
 import inescid.gsd.transport.events.DeathNotification;
@@ -51,10 +53,16 @@ public class MasterNode extends Node {
 			processDeathNotification(source, (DeathNotification) object);
 		else if (object instanceof GetInfoReply)
 			processGetInfoReply(source, (GetInfoReply) object);
+		else if (object instanceof GetNodeList)
+			processGetNodeList(source, (GetNodeList) object);
 		else
 			Node.die("Received unknown event: " + object);
 		Node.logger.log(Level.FINEST,
 				"active nodes:" + s.getWorkerList().size() + "     list: " + s.getWorkerList().keySet());
+	}
+
+	private void processGetNodeList(Endpoint source, GetNodeList object) {
+		sendObject(source, new GetNodeListReply(s.getWorkerList().keySet()));
 	}
 
 	@Override

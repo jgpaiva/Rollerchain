@@ -143,6 +143,7 @@ public abstract class Node implements EventReceiver {
 
 	protected static void die(Throwable t) {
 		t.printStackTrace();
+		t.printStackTrace(System.out);
 		Node.die("Exception found when processing job: " + t);
 	}
 

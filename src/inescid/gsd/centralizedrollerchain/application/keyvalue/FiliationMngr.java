@@ -35,11 +35,11 @@ public class FiliationMngr {
 	}
 
 	public void nextRound(StaticGroup group, StaticGroup predecessor, StaticGroup successor) {
-		if (group.size() > 1) {
+		if ((group != null) && (group.size() > 1)) {
 			TreeSet<Endpoint> choices = new TreeSet<Endpoint>();
 			for (Endpoint it : knownSites.keySet())
 				choices.add(it);
-			choices.add(Utils.getRandomEl(group));
+			choices.add(Utils.getRandomEl(group, owner.getEndpoint()));
 			if (predecessor != null)
 				choices.add(Utils.getRandomEl(predecessor));
 			if (successor != null)

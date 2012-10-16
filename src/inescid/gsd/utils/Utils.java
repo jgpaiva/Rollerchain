@@ -1,10 +1,13 @@
 package inescid.gsd.utils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 public class Utils {
 	private final static int RANDOM_SEED = 123456; // TODO: maybe make this
@@ -89,6 +92,24 @@ public class Utils {
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
+	}
+
+	public static <K, V> TreeSet<V> getOrCreate(TreeMap<K, TreeSet<V>> map, K key) {
+		TreeSet<V> retVal = map.get(key);
+		if (retVal == null) {
+			retVal = new TreeSet<V>();
+			map.put(key, retVal);
+		}
+		return retVal;
+	}
+
+	public static <K, V> ArrayList<V> getOrCreate(TreeMap<K, ArrayList<V>> map, K key) {
+		ArrayList<V> retVal = map.get(key);
+		if (retVal == null) {
+			retVal = new ArrayList<V>();
+			map.put(key, retVal);
+		}
+		return retVal;
 	}
 }
 
