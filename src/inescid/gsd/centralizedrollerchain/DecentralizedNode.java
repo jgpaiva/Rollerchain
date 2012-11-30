@@ -10,7 +10,6 @@ import inescid.gsd.centralizedrollerchain.events.MergeIDUpdate;
 import inescid.gsd.centralizedrollerchain.events.SetNeighbours;
 import inescid.gsd.centralizedrollerchain.events.UpdatePredecessor;
 import inescid.gsd.centralizedrollerchain.events.UpdateSuccessor;
-import inescid.gsd.centralizedrollerchain.events.WorkerInit;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayer;
 import inescid.gsd.centralizedrollerchain.interfaces.UpperLayerMessage;
 import inescid.gsd.centralizedrollerchain.internalevents.KillEvent;
@@ -21,20 +20,20 @@ import inescid.gsd.utils.Utils;
 
 import java.util.logging.Level;
 
-public class WorkerNode extends Node implements LowerLayer {
-	private final Endpoint masterEndpoint;
+public class DecentralizedNode extends Node implements LowerLayer {
+	private final Endpoint contact;
 
-	private final WorkerNodeInternalState s = new WorkerNodeInternalState();
+	private final DecentralizedNodeInternalState s = new DecentralizedNodeInternalState();
 
 	private final UpperLayer upperLayer;
 
 	private final FileOutput writer;
 
-	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint) {
+	public DecentralizedNode(Endpoint endpoint, Endpoint contact) {
 		super(endpoint);
-		this.masterEndpoint = masterEndpoint;
-		if (masterEndpoint == null)
-			Node.die("Master endpoint is null");
+		this.contact = contact;
+		if (contact == null)
+			Node.die("contact endpoint is null");
 		upperLayer = new UpperLayer() {
 			@Override
 			public void processEvent(Endpoint source, Object message) {
@@ -54,11 +53,11 @@ public class WorkerNode extends Node implements LowerLayer {
 		writer = new FileOutput(endpoint, this.getClass());
 	}
 
-	public WorkerNode(Endpoint endpoint, Endpoint masterEndpoint, UpperLayer upperLayer) {
+	public DecentralizedNode(Endpoint endpoint, Endpoint contact, UpperLayer upperLayer) {
 		super(endpoint);
-		this.masterEndpoint = masterEndpoint;
-		if (masterEndpoint == null)
-			Node.die("Master endpoint is null");
+		this.contact = contact;
+		if (contact == null)
+			Node.die("contact endpoint is null");
 		this.upperLayer = upperLayer;
 		writer = new FileOutput(endpoint, this.getClass());
 	}
@@ -90,15 +89,15 @@ public class WorkerNode extends Node implements LowerLayer {
 	}
 
 	private void processDeathNotification(Endpoint source, Object message) {
-		if (source.equals(masterEndpoint))
-			Node.die("Master is unreachable!");
+		if (source.equals(contact) && (s.getGroup() == null))
+			Node.logger.log(Level.WARNING, "contact is dead and group is empty: may never join");
 	}
 
 	@Override
 	public void init() {
 		super.init();
 		upperLayer.init(this);
-		sendMessage(masterEndpoint, new WorkerInit());
+		sendMessage(contact, new JoinNetwork());
 	}
 
 	@Override
@@ -226,7 +225,9 @@ public class WorkerNode extends Node implements LowerLayer {
 		s.setPredecessorGroup(message.getNewGroup());
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see inescid.gsd.centralizedrollerchain.LowerLayer#getGroup()
 	 */
 	@Override
@@ -234,7 +235,9 @@ public class WorkerNode extends Node implements LowerLayer {
 		return s.getGroup();
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see inescid.gsd.centralizedrollerchain.LowerLayer#getPredecessorID()
 	 */
 	@Override
@@ -242,7 +245,9 @@ public class WorkerNode extends Node implements LowerLayer {
 		return s.getPredecessorID();
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see inescid.gsd.centralizedrollerchain.LowerLayer#getSuccessorID()
 	 */
 	@Override
@@ -250,7 +255,9 @@ public class WorkerNode extends Node implements LowerLayer {
 		return s.getSuccessorID();
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see inescid.gsd.centralizedrollerchain.LowerLayer#getPredecessor()
 	 */
 	@Override
@@ -258,7 +265,9 @@ public class WorkerNode extends Node implements LowerLayer {
 		return s.getPredecessorGroup();
 	}
 
-	/* (non-Javadoc)
+	/*
+	 * (non-Javadoc)
+	 * 
 	 * @see inescid.gsd.centralizedrollerchain.LowerLayer#getSuccessor()
 	 */
 	@Override
@@ -267,7 +276,7 @@ public class WorkerNode extends Node implements LowerLayer {
 	}
 }
 
-class WorkerNodeInternalState {
+class DecentralizedNodeInternalState {
 	private StaticGroup group = null;
 	private StaticGroup successorGroup = null;
 	private StaticGroup predecessorGroup = null;

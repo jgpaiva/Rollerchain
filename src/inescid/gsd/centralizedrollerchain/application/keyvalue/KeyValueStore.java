@@ -2,9 +2,8 @@ package inescid.gsd.centralizedrollerchain.application.keyvalue;
 
 import inescid.gsd.centralizedrollerchain.Configuration;
 import inescid.gsd.centralizedrollerchain.Identifier;
-import inescid.gsd.centralizedrollerchain.Node;
+import inescid.gsd.centralizedrollerchain.LowerLayer;
 import inescid.gsd.centralizedrollerchain.StaticGroup;
-import inescid.gsd.centralizedrollerchain.WorkerNode;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.AllKeysRequest;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.GossipKeys;
 import inescid.gsd.centralizedrollerchain.application.keyvalue.events.KeysReply;
@@ -26,7 +25,7 @@ import java.util.logging.Logger;
 
 public class KeyValueStore implements UpperLayer {
 
-	private WorkerNode owner;
+	private LowerLayer owner;
 	private ScheduledExecutorService executor;
 	private static final Logger logger = Logger.getLogger(KeyValueStore.class.getName());
 	private final KeyStorage keys;
@@ -44,8 +43,8 @@ public class KeyValueStore implements UpperLayer {
 	}
 
 	@Override
-	public void init(Node owner) {
-		this.owner = (WorkerNode) owner;
+	public void init(LowerLayer owner) {
+		this.owner = owner;
 		executor = owner.getExecutor();
 		filiationManager = new FiliationMngr(this);
 		KeyValueStore.logger.log(Level.INFO, "Initialized KeyValueStore");

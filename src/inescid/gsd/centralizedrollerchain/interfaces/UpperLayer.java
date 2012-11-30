@@ -1,10 +1,10 @@
 package inescid.gsd.centralizedrollerchain.interfaces;
 
-import inescid.gsd.centralizedrollerchain.Node;
+import inescid.gsd.centralizedrollerchain.LowerLayer;
 import inescid.gsd.transport.interfaces.EventReceiver;
 
 public interface UpperLayer extends EventReceiver {
-	public void init(Node n);
-
 	public void nextRound();
+
+	void init(LowerLayer owner);
 }
